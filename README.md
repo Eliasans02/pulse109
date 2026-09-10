@@ -20,7 +20,7 @@ GovTech Camp, кейс 2. Исследование, план команды и h
 
 Открыть этот репозиторий в Gemini CLI/IDE или другом coding agent и отправить:
 
-> Read AGENTS.md and planning/backlog.json. Implement the first synthetic vertical slice from AGENTS.md as a small branch/PR. Do not repeat research or train models yet. Keep mock status visible, preserve existing files, run the smoke check, and report its actual output. Finish with changed files, remaining blockers, and the next issue ID. Do not upload real citizen data or claim case completion.
+> Read AGENTS.md and GitHub issue #9 (P109-09), or extract only that task from planning/backlog.json. Implement the first synthetic vertical slice as a small branch/PR. Do not repeat research, load the full backlog, or train models yet. Keep mock status visible, preserve existing files, run the smoke check, and report its actual output. Finish with changed files, remaining blockers, and the next issue ID. Do not upload real citizen data or claim case completion.
 
 Некоторые инструменты не читают `AGENTS.md` автоматически — попросить прочитать его явно. Для последующих запусков передавать один issue, необходимые файлы и последний короткий handoff; полный чат и исследование каждый раз не нужны. Первый проход можно строить на синтетических fixtures параллельно с проверкой данных, но он не закрывает требования реального fine-tuning.
 
