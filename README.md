@@ -8,6 +8,7 @@ GovTech Camp, кейс 2. Исследование, план команды и h
 - [Начать разработку — компактный handoff для Gemini Flash и других моделей](AGENTS.md)
 - [Проверенные источники и схемы](planning/data_inventory.json)
 - [Матрица 20 регионов и доступности полей](planning/data_matrix.json)
+- [Запрос контракта данных и условий использования](planning/data_contract_request.md)
 - [План команды: владельцы, часы, зависимости, приёмка](planning/backlog.json)
 - [GitHub Issues](https://github.com/Eliasans02/pulse109/issues) · [Этапы](https://github.com/Eliasans02/pulse109/milestones)
 

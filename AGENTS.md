@@ -44,6 +44,8 @@
 - Missing original text or decisions must remain null/unsupported, not invented.
 - Ask the team for the missing 13 regions and field definitions, not the already
   supplied folder link; do not contact organizers autonomously.
+- `planning/data_contract_request.md` is the exact request and P109-03 closure
+  checklist; do not mark the gate complete from a promise of future data.
 
 ## Exact initial architecture
 
