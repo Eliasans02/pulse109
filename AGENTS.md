@@ -3,7 +3,7 @@
 ## Current state and objective
 
 - The team has switched from the hospital case to Pulse 109.
-- As of 2026-09-10, this directory has research/planning artifacts, not an app.
+- As of 2026-09-10, the synthetic skeleton (issue P109-09) is implemented (`app.py`, `fixtures/demo.json`, `static/*`, `scripts/smoke.py`). Models are not yet trained.
 - Build a compact skeleton first; do not repeat the completed research.
 - Read the current task and relevant planning files before editing.
 - `planning/data_inventory.json` records the audited source headers and limits.

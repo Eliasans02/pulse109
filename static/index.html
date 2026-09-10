@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pulse 109 — Synthetic Demo</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="top-banner" role="banner">
+    ⚠️ SYNTHETIC DEMO — MODELS NOT TRAINED ⚠️
+  </div>
+
+  <header class="app-header">
+    <div class="header-main">
+      <h1>Pulse 109</h1>
+      <span class="sub-title">Ассистент оператора 109 и ситуационный центр</span>
+    </div>
+    <div class="system-badge" id="system-badge" aria-live="polite">
+      Режим: <strong id="app-mode">mock</strong> | Модели: <strong id="app-training">not_trained</strong>
+    </div>
+  </header>
+
+  <main class="dashboard-grid">
+    <!-- Section 1: Intake -->
+    <section class="panel intake-panel" aria-labelledby="intake-heading">
+      <h2 id="intake-heading">1. Приём обращения (Intake)</h2>
+      <p class="panel-desc">Синтетический ввод обращения гражданина без персональных данных.</p>
+
+      <form id="intake-form" novalidate>
+        <div class="form-group">
+          <label for="intake-region">Регион (20 регионов РК) <span class="req">*</span></label>
+          <select id="intake-region" required aria-required="true">
+            <option value="">-- Выберите регион --</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="intake-lang">Язык обращения</label>
+          <select id="intake-lang">
+            <option value="ru">Русский (ru)</option>
+            <option value="kk">Қазақша (kk)</option>
+            <option value="mixed">Смешанный (mixed)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="intake-text">Текст обращения <span class="req">*</span></label>
+          <textarea id="intake-text" rows="4" placeholder="Опишите проблему (например: Отсутствует уличное освещение по ул. Абая...)" maxlength="10000" required aria-required="true"></textarea>
+          <div class="char-count"><span id="char-num">0</span> / 10000 символов</div>
+        </div>
+
+        <div id="intake-error" class="error-msg" role="alert" style="display:none;"></div>
+        <button type="submit" class="btn btn-primary" id="btn-submit-intake">Зарегистрировать обращение</button>
+      </form>
+
+      <div class="recent-queue">
+        <h3>Очередь последних обращений</h3>
+        <ul id="queue-list" class="queue-list" role="list">
+          <li class="empty-state">Загрузка обращений...</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Section 2: Operator Workbench -->
+    <section class="panel workbench-panel" aria-labelledby="workbench-heading">
+      <h2 id="workbench-heading">2. Рабочее место оператора</h2>
+      <p class="panel-desc">Верификация темы, похожие прецеденты и подтверждение человеком.</p>
+
+      <div id="active-complaint-card" class="card active-card">
+        <div class="card-header">
+          <span class="badge" id="active-status-badge">Нет выбранного обращения</span>
+          <span class="record-id" id="active-id"></span>
+        </div>
+        <div class="card-body">
+          <p id="active-text" class="complaint-text">Выберите обращение из очереди слева или создайте новое через форму приёма.</p>
+          <div class="meta-row">
+            <span>Регион: <strong id="active-region">—</strong></span>
+            <span>Источник: <strong id="active-origin">synthetic</strong></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="proposal-box">
+        <div class="box-header">
+          <h3>Предложение модели (Mock)</h3>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-classify" disabled>Запросить предложение</button>
+        </div>
+        <div class="mock-meta-note">
+          <small>mode: <strong>mock</strong> | confidence: <strong>null</strong> (не выдумываем точность)</small>
+        </div>
+        <div id="proposal-content" class="proposal-details">
+          <p class="empty-state">Нажмите «Запросить предложение» для анализа текста.</p>
+        </div>
+      </div>
+
+      <div class="similar-box">
+        <h3>Похожие обращения (Mock Retrieval)</h3>
+        <p class="meta-note"><small>Аналогичные случаи не означают дубликат или один инцидент.</small></p>
+        <div id="similar-list" class="similar-items">
+          <p class="empty-state">Кандидаты не загружены.</p>
+        </div>
+      </div>
+
+      <div class="confirm-box">
+        <h3>3. Подтверждение человеком (Human-in-the-loop)</h3>
+        <form id="confirm-form" novalidate>
+          <div class="form-row">
+            <div class="form-group col">
+              <label for="confirm-topic">Тема обращения <span class="req">*</span></label>
+              <select id="confirm-topic" required></select>
+            </div>
+            <div class="form-group col">
+              <label for="confirm-priority">Приоритет <span class="req">*</span></label>
+              <select id="confirm-priority" required>
+                <option value="normal">Обычный (normal)</option>
+                <option value="urgent">Срочный (urgent)</option>
+                <option value="needs_review">Требует уточнения (needs_review)</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="confirm-service">Ответственная служба <span class="req">*</span></label>
+            <input type="text" id="confirm-service" required>
+          </div>
+          <div id="confirm-error" class="error-msg" role="alert" style="display:none;"></div>
+          <div id="confirm-success" class="success-msg" role="status" style="display:none;"></div>
+          <button type="submit" class="btn btn-success" id="btn-confirm" disabled>Подтвердить решение оператора</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- Section 3: City Analytics & 501 Stubs -->
+    <section class="panel analytics-panel" aria-labelledby="analytics-heading">
+      <h2 id="analytics-heading">4. Аналитика из SQLite и заглушки</h2>
+      <p class="panel-desc">Реальные агрегаты из базы данных (без захардкоженных цифр).</p>
+
+      <div class="stats-counters">
+        <div class="stat-card">
+          <div class="stat-num" id="stat-total">0</div>
+          <div class="stat-label">Всего обращений</div>
+        </div>
+        <div class="stat-card stat-pending">
+          <div class="stat-num" id="stat-pending">0</div>
+          <div class="stat-label">В ожидании (Pending)</div>
+        </div>
+        <div class="stat-card stat-confirmed">
+          <div class="stat-num" id="stat-confirmed">0</div>
+          <div class="stat-label">Подтверждено (Confirmed)</div>
+        </div>
+      </div>
+
+      <div class="summary-section">
+        <h3>Распределение по темам</h3>
+        <div id="topics-breakdown" class="breakdown-list"></div>
+      </div>
+
+      <div class="stubs-section">
+        <h3>Алдағы модульдер (501 Stubs)</h3>
+        <p class="meta-note"><small>Модули запланированы в следующих milestone. Проверка честного 501 ответа:</small></p>
+        <div class="stub-buttons">
+          <button type="button" class="btn btn-outline" onclick="callStub('/api/alerts')">GET /api/alerts</button>
+          <button type="button" class="btn btn-outline" onclick="callStub('/api/forecast?horizon_months=1')">GET /api/forecast (1 мес)</button>
+          <button type="button" class="btn btn-outline" onclick="callStub('/api/query', 'POST')">POST /api/query (NL)</button>
+          <button type="button" class="btn btn-outline" onclick="callStub('/api/reports?format=pdf')">GET /api/reports (PDF)</button>
+        </div>
+        <div id="stub-output" class="stub-output" style="display:none;"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <p>Pulse 109 • Synthetic Skeleton • GovTech Camp Case 2 • Human confirmation required for all decisions</p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

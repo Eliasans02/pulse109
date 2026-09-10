@@ -10,6 +10,7 @@ def main():
     root = Path(__file__).resolve().parents[1]
     backlog = json.loads((root / "planning/backlog.json").read_text())
     inventory = json.loads((root / "planning/data_inventory.json").read_text())
+    matrix = json.loads((root / "planning/data_matrix.json").read_text())
     report = (root / "docs/research.md").read_text()
     issues = backlog["issues"]
     by_id = {issue["id"]: issue for issue in issues}
@@ -49,12 +50,28 @@ def main():
     assert organizer["csv_headers_verified"] <= organizer["observed_csv_files"]
     assert {item["region"] for item in inventory["datasets"]} == observed
 
+    matrix_rows = matrix["field_matrix"]
+    matrix_regions = {row["region"] for row in matrix_rows}
+    assert matrix_regions == expected
+    assert len(matrix_rows) == 20
+    listed_rows = [row for row in matrix_rows if row["source"] is not None]
+    assert len(listed_rows) == organizer["observed_regions"]
+    assert sum(len(row["source"].get("file_ids", [row["source"].get("file_id")])) for row in listed_rows) == organizer["observed_csv_files"]
+    assert {row["region"] for row in listed_rows} == observed
+    assert set(matrix["coverage"]["missing_regions"]) == expected - observed
+    assert all(row["source"] is None for row in matrix_rows if row["region"] not in observed)
+    allowed_field_statuses = {"present_in_header", "candidate_unverified", "not_observed"}
+    for row in listed_rows:
+        for field in row["fields"].values():
+            assert field["status"] in allowed_field_statuses
+            assert field["columns"] == sorted(field["columns"])
+
     definitions = re.findall(r"^\[\^(\d+)\]:", report, re.MULTILINE)
     references = set(re.findall(r"\[\^(\d+)\](?!:)", report))
     assert len(definitions) == len(set(definitions)), "Duplicate source definition"
     assert references == set(definitions), "Missing or unused source note"
     for path in root.rglob("*"):
-        if path.is_file() and ".git" not in path.parts and path.suffix in {".md", ".json", ".yml", ".py"}:
+        if path.is_file() and ".git" not in path.parts and ".venv" not in path.parts and path.suffix in {".md", ".json", ".yml", ".py"}:
             assert len(path.read_text().splitlines()) < 500, f"File too long: {path}"
     print(f"PASS: {len(issues)} tasks, {len(backlog['milestones'])} stages, {len(covered)} requirements; dependency DAG valid")
     print(f"Hours: {sum(hours.values())}; by owner: {dict(hours)}")
