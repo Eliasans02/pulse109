@@ -21,7 +21,55 @@
     </div>
   </header>
 
+  <nav class="workspace-nav" aria-label="Разделы рабочего места">
+    <a href="#coverage-heading">Покрытие данных</a>
+    <a href="#intake-heading">Приём и оператор</a>
+    <a href="#analytics-heading">Демо-счётчики</a>
+  </nav>
   <main class="dashboard-grid">
+    <section class="panel coverage-panel" aria-labelledby="coverage-heading" aria-busy="true" id="coverage-panel">
+      <div class="coverage-heading-row">
+        <div>
+          <p class="coverage-eyebrow">Ситуационный центр · готовность данных</p>
+          <h2 id="coverage-heading" tabindex="-1">Где есть данные, а где пока пробел</h2>
+        </div>
+        <span class="evidence-badge">Факты о полученном пакете</span>
+      </div>
+      <p class="panel-desc">Наличие файла не подтверждает качество текстов или полноту истории. Демо-обращения ниже — синтетические.</p>
+      <div class="coverage-counters" aria-label="Покрытие всего пакета, независимо от фильтра">
+        <div><strong id="coverage-supplied">—</strong><span>регионов с файлами</span></div>
+        <div><strong id="coverage-missing">—</strong><span>регионов без файлов</span></div>
+        <div><strong id="coverage-files">—</strong><span>CSV в полученном пакете</span></div>
+      </div>
+      <div class="coverage-controls">
+        <div>
+          <label for="coverage-region">Регион покрытия</label>
+          <select id="coverage-region" disabled><option value="">Все регионы</option></select>
+        </div>
+        <div>
+          <label for="coverage-supply">Наличие файлов</label>
+          <select id="coverage-supply"><option value="all">Все статусы</option><option value="supplied">Файлы получены</option><option value="missing">Файлов нет</option></select>
+        </div>
+        <button type="button" class="btn btn-secondary" id="coverage-retry">Обновить покрытие</button>
+      </div>
+      <p id="coverage-status" role="status" aria-live="polite">Загружаем сведения о покрытии…</p>
+      <div id="coverage-error" class="error-msg" role="alert" hidden></div>
+      <div id="coverage-content" hidden>
+        <p id="coverage-empty" class="empty-state" hidden>Нет регионов с выбранным сочетанием фильтров. Измените регион или наличие файлов.</p>
+        <div class="coverage-table-wrap" id="coverage-table-wrap" tabindex="0" role="region" aria-label="Таблица покрытия регионов, прокручивается">
+          <table class="coverage-table">
+            <caption>Файлы организаторов: проверка доступности и полей</caption>
+            <thead><tr><th scope="col">Регион</th><th scope="col">Файлы</th><th scope="col">CSV-записи</th><th scope="col">История и обновление</th><th scope="col">Текст и тема</th><th scope="col">Язык и решение</th></tr></thead>
+            <tbody id="coverage-rows"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="coverage-note">
+        <p><strong>Как читать:</strong> «Есть в заголовке» — проверено имя поля; «Кандидат» — смысл ещё не подтверждён; «Нет явного поля» — не найден подходящий заголовок.</p>
+        <p>Подсчёт CSV-записей не подтверждает число уникальных обращений. «Не проверено» и «Нет файла» не означают нулевой спрос. Языки RU/KK и полнота истории требуют отдельной проверки.</p>
+        <p id="coverage-source">Источник: инвентарь и матрица полученного пакета.</p>
+      </div>
+    </section>
     <!-- Section 1: Intake -->
     <section class="panel intake-panel" aria-labelledby="intake-heading">
       <h2 id="intake-heading">1. Приём обращения (Intake)</h2>
@@ -132,8 +180,8 @@
 
     <!-- Section 3: City Analytics & 501 Stubs -->
     <section class="panel analytics-panel" aria-labelledby="analytics-heading">
-      <h2 id="analytics-heading">4. Аналитика из SQLite и заглушки</h2>
-      <p class="panel-desc">Реальные агрегаты из базы данных (без захардкоженных цифр).</p>
+      <h2 id="analytics-heading">4. Счётчики синтетического демо</h2>
+      <p class="panel-desc">Подсчёт демонстрационных записей из SQLite. Это не обращения из файлов организаторов и не статистика регионов.</p>
 
       <div class="stats-counters">
         <div class="stat-card">
@@ -174,5 +222,6 @@
   </footer>
 
   <script src="/static/app.js"></script>
+  <script src="/static/coverage.js"></script>
 </body>
 </html>
