@@ -1,6 +1,14 @@
 {
   "as_of": "2026-09-10",
   "organizer_export_verified": false,
+  "received_package_status": {
+    "status": "reported_final_by_team",
+    "reported_on": "2026-09-10",
+    "additional_files_expected": false,
+    "basis": "Сообщение команды: в папке находится всё, что организаторы отправили команде. Это не отдельное письмо организаторов о полноте и не подтверждение семантики полей.",
+    "implication": "Не ждать новую папку. Проверять и документировать ограничения текущих 7 регионов; отсутствие 13 регионов и пригодного текста остаётся риском соответствия ТЗ.",
+    "do_not_re_request_same_folder": true
+  },
   "organizer_source": {
     "priority": "primary",
     "folder_url": "https://drive.google.com/drive/folders/1rOKRZeEvpJlBkNeWKoIVzq8Lq3zeVi1B",

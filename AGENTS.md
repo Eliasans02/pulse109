@@ -42,8 +42,10 @@
 - Public metadata/license labels do not establish permission to publish these rows.
 - Keep real citizen records out of GitHub, CI, prompts, logs, screenshots, and demos.
 - Missing original text or decisions must remain null/unsupported, not invented.
-- Ask the team for the missing 13 regions and field definitions, not the already
-  supplied folder link; do not contact organizers autonomously.
+- The team reports this is the complete package they received; do not repeatedly
+  request the same folder or claim the missing 13 regions exist.
+- Field meanings, rights, hosting and text availability still need confirmation;
+  if no response is possible, document the constrained MVP and its unmet gates.
 - `planning/data_contract_request.md` is the exact request and P109-03 closure
   checklist; do not mark the gate complete from a promise of future data.
 
