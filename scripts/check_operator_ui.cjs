@@ -412,6 +412,35 @@ async function main() {
       assert.equal(await page.locator('#queue-list .queue-item').count(), 3);
       assert.deepEqual(writes, ['/api/complaints/synthetic-ui-0/confirm']);
     });
+
+    await check('malformed similar members fail visibly and recover on reselection', async (page, writes, state) => {
+      await page.locator('#queue-list .queue-item').first().click();
+      await page.locator('#similar-list .similar-item').waitFor();
+      state.similar = {status: 200, json: {candidates: [null]}};
+      await page.locator('#queue-list .queue-item').nth(1).click();
+      await page.waitForFunction(() => document.getElementById('similar-list').textContent.includes('Не удалось'));
+      assert.equal(await page.locator('#similar-list .similar-item').count(), 0);
+      state.similar = {status: 200, json: {candidates: [{excerpt: 'candidate without id'}]}};
+      await page.locator('#queue-list .queue-item').nth(2).click();
+      await page.waitForTimeout(300);
+      assert.match(await page.locator('#similar-list').textContent(), /Не удалось/);
+      assert.equal(await page.locator('#similar-list .similar-item').count(), 0);
+      state.similar = {status: 200, json: {candidates: [candidate]}};
+      await page.locator('#queue-list .queue-item').first().click();
+      await page.locator('#similar-list .similar-item').waitFor();
+      assert.deepEqual(writes, []);
+    });
+
+    await check('unknown similar decision fields render as unavailable, not undefined', async (page, writes, state) => {
+      state.similar = {status: 200, json: {candidates: [{complaint_id: 'cand-x', excerpt: 'Кандидат без статуса'}]}};
+      await page.locator('#queue-list .queue-item').first().click();
+      await page.locator('#similar-list .similar-item').waitFor();
+      const text = await page.locator('#similar-list').textContent();
+      assert.match(text, /Статус: — \| Источник: —/);
+      assert.doesNotMatch(text, /undefined/);
+      assert.doesNotMatch(text, /null/);
+      assert.deepEqual(writes, []);
+    });
   } finally {
     await browser.close();
   }
