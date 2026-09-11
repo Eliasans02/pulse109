@@ -1,6 +1,7 @@
 let activeComplaint = null;
 let cachedTopics = [];
 let cachedRegions = [];
+let queueRequestId = 0;
 
 document.addEventListener("DOMContentLoaded", () => {
   initApp();
@@ -20,6 +21,7 @@ function setupEventListeners() {
   });
 
   document.getElementById("intake-form").addEventListener("submit", handleIntakeSubmit);
+  document.getElementById("queue-refresh").addEventListener("click", loadQueue);
   document.getElementById("btn-classify").addEventListener("click", handleClassify);
   document.getElementById("confirm-form").addEventListener("submit", handleConfirmSubmit);
   document.getElementById("confirm-topic").addEventListener("change", handleTopicChange);
@@ -96,37 +98,66 @@ async function loadStats() {
 }
 
 async function loadQueue() {
+  const requestId = ++queueRequestId;
+  const list = document.getElementById("queue-list");
+  const status = document.getElementById("queue-status");
+  const errorBox = document.getElementById("queue-error");
+  list.setAttribute("aria-busy", "true");
+  status.textContent = "Загружаем очередь…";
+  errorBox.hidden = true;
+
+  let complaints;
   try {
     const res = await fetch("/api/complaints?limit=30");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    const list = document.getElementById("queue-list");
-    list.innerHTML = "";
-    const complaints = data.complaints || [];
-    if (!complaints.length) {
-      list.innerHTML = '<li class="empty-state">Очередь пуста</li>';
-      return;
-    }
-    complaints.forEach(c => {
-      const item = document.createElement("li");
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "queue-item";
-      button.dataset.complaintId = c.id;
-      const selected = activeComplaint?.id === c.id;
-      button.classList.toggle("selected", selected);
-      button.setAttribute("aria-pressed", String(selected));
-      const badgeClass = c.decision_status === "confirmed" ? "badge-confirmed" : "badge-pending";
-      const shortText = c.text.length > 55 ? c.text.substring(0, 55) + "..." : c.text;
-      const preview = textElement("span", shortText);
-      preview.title = c.text;
-      button.append(preview, textElement("span", c.decision_status, `badge ${badgeClass}`));
-      button.addEventListener("click", () => selectComplaint(c));
-      item.appendChild(button);
-      list.appendChild(item);
-    });
+    if (!data || !Array.isArray(data.complaints)) throw new Error("Invalid queue response");
+    complaints = data.complaints;
   } catch (err) {
-    console.error("Failed to load queue", err);
+    if (requestId !== queueRequestId) return;
+    list.setAttribute("aria-busy", "false");
+    const hasRows = list.querySelector("button") !== null;
+    if (hasRows) {
+      list.dataset.stale = "true";
+    } else {
+      delete list.dataset.stale;
+      list.replaceChildren();
+    }
+    errorBox.textContent = hasRows
+      ? "Не удалось обновить очередь. Показанные данные могли устареть."
+      : "Не удалось загрузить очередь. Повторите попытку.";
+    errorBox.hidden = false;
+    status.textContent = "";
+    return;
   }
+  if (requestId !== queueRequestId) return;
+  list.setAttribute("aria-busy", "false");
+  delete list.dataset.stale;
+  list.replaceChildren();
+  if (!complaints.length) {
+    list.appendChild(textElement("li", "Очередь пуста", "empty-state"));
+    status.textContent = "Очередь пуста.";
+    return;
+  }
+  complaints.forEach(c => {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "queue-item";
+    button.dataset.complaintId = c.id;
+    const selected = activeComplaint?.id === c.id;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+    const badgeClass = c.decision_status === "confirmed" ? "badge-confirmed" : "badge-pending";
+    const shortText = c.text.length > 55 ? c.text.substring(0, 55) + "..." : c.text;
+    const preview = textElement("span", shortText);
+    preview.title = c.text;
+    button.append(preview, textElement("span", c.decision_status, `badge ${badgeClass}`));
+    button.addEventListener("click", () => selectComplaint(c));
+    item.appendChild(button);
+    list.appendChild(item);
+  });
+  status.textContent = `Показано обращений: ${complaints.length}`;
 }
 
 function selectComplaint(c) {
