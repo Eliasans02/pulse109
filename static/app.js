@@ -239,9 +239,16 @@ async function handleIntakeSubmit(e) {
     await loadStats();
     await loadQueue();
     // Fetch full complaint and select
-    const fullRes = await fetch(`/api/complaints/${created.id}`);
-    const fullData = await fullRes.json();
-    selectComplaint(fullData.complaint);
+    try {
+      const fullRes = await fetch(`/api/complaints/${created.id}`);
+      if (!fullRes.ok) throw new Error(`HTTP ${fullRes.status}`);
+      const fullData = await fullRes.json();
+      if (!fullData || !fullData.complaint || typeof fullData.complaint.id !== "string") throw new Error("Invalid complaint response");
+      selectComplaint(fullData.complaint);
+    } catch (followErr) {
+      console.error("Failed to load the created complaint", followErr);
+      showError(errorBox, "Обращение зарегистрировано, но автоматический выбор не удался. Найдите его в очереди.");
+    }
   } catch (err) {
     showError(errorBox, "Сетевая ошибка при отправке обращения");
   }
@@ -259,7 +266,7 @@ async function handleClassify() {
     const res = await fetch(`/api/complaints/${complaint.id}/classify`, { method: "POST" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    if (!data || !data.proposal || typeof data.proposal !== "object") throw new Error("Invalid classification response");
+    if (!data || !data.proposal || typeof data.proposal !== "object" || Array.isArray(data.proposal)) throw new Error("Invalid classification response");
     proposal = data.proposal;
   } catch (err) {
     console.error("Classification error", err);
@@ -380,11 +387,15 @@ async function handleConfirmSubmit(e) {
       return;
     }
     const data = await res.json();
-    succBox.textContent = `Решение для обращения ${data.complaint.id} успешно подтверждено!`;
-    succBox.style.display = "block";
+    if (!data || !data.complaint || typeof data.complaint !== "object" || typeof data.complaint.id !== "string") {
+      showError(errBox, "Получен некорректный ответ сервера. Повторите попытку.");
+      return;
+    }
     if (selectionGeneration === generation) {
       selectComplaint(data.complaint);
     }
+    succBox.textContent = `Решение для обращения ${data.complaint.id} успешно подтверждено!`;
+    succBox.style.display = "block";
     await loadStats();
     await loadQueue();
   } catch (err) {

@@ -34,7 +34,7 @@ async function main() {
     page.setDefaultTimeout(4000);
     const errors = [];
     const writes = [];
-    const state = {complaints: options.complaints || {status: 200, json: {complaints}}, similar: options.similar || {status: 200, json: {candidates: [candidate]}}, classify: options.classify || {status: 200, json: {proposal}}, confirm: options.confirm || {status: 200, json: {complaint: confirmedComplaint}}, queueGets: []};
+    const state = {complaints: options.complaints || {status: 200, json: {complaints}}, complaint: options.complaint || {status: 200, json: {complaint: complaints[0]}}, intake: options.intake || {status: 200, json: {id: 'cmp-new'}}, similar: options.similar || {status: 200, json: {candidates: [candidate]}}, classify: options.classify || {status: 200, json: {proposal}}, confirm: options.confirm || {status: 200, json: {complaint: confirmedComplaint}}, queueGets: []};
     page.on('pageerror', error => errors.push(error.name));
     await page.route('**/api/**', async route => {
       const request = route.request();
@@ -63,6 +63,16 @@ async function main() {
         return route.fulfill({status: config.status, json: config.json});
       } else if (path.endsWith('/confirm')) {
         const config = state.confirm;
+        if (config.delayMs) await new Promise(resolve => setTimeout(resolve, config.delayMs));
+        if (config.raw !== undefined) return route.fulfill({status: config.status, contentType: 'application/json', body: config.raw});
+        return route.fulfill({status: config.status, json: config.json});
+      } else if (path === '/api/intake') {
+        const config = state.intake;
+        if (config.delayMs) await new Promise(resolve => setTimeout(resolve, config.delayMs));
+        if (config.raw !== undefined) return route.fulfill({status: config.status, contentType: 'application/json', body: config.raw});
+        return route.fulfill({status: config.status, json: config.json});
+      } else if (/^\/api\/complaints\/[^/]+$/.test(path)) {
+        const config = state.complaint;
         if (config.delayMs) await new Promise(resolve => setTimeout(resolve, config.delayMs));
         if (config.raw !== undefined) return route.fulfill({status: config.status, contentType: 'application/json', body: config.raw});
         return route.fulfill({status: config.status, json: config.json});
@@ -407,10 +417,57 @@ async function main() {
       await page.locator('#btn-confirm').click();
       await page.waitForFunction(() => document.getElementById('active-status-badge').textContent === 'confirmed');
       assert.equal(await page.locator('#active-id').textContent(), 'synthetic-ui-0');
-      assert.match(await page.locator('#confirm-success').textContent(), /успешно подтверждено/);
+      assert.equal(await page.locator('#confirm-success').isVisible(), true, 'Confirmation feedback must stay visible after the card refresh');
       assert.equal(await page.locator('#queue-list').getAttribute('aria-busy'), 'false');
       assert.equal(await page.locator('#queue-list .queue-item').count(), 3);
       assert.deepEqual(writes, ['/api/complaints/synthetic-ui-0/confirm']);
+    });
+
+    await check('malformed confirmation responses fail honestly and keep the selection', async (page, writes, state) => {
+      await page.locator('#queue-list .queue-item').first().click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
+      await page.locator('#confirm-topic').selectOption('test_topic');
+      await page.locator('#confirm-service').fill('srv-test');
+      state.confirm = {status: 200, json: {}};
+      await page.locator('#btn-confirm').click();
+      await page.waitForFunction(() => document.getElementById('confirm-error').textContent.includes('некорректный ответ'));
+      assert.equal(await page.locator('#active-id').textContent(), 'synthetic-ui-0');
+      assert.equal(await page.locator('#confirm-success').isVisible(), false);
+      assert.deepEqual(writes, ['/api/complaints/synthetic-ui-0/confirm']);
+    });
+
+    await check('malformed classification proposals do not touch the interface', async (page, writes, state) => {
+      await page.locator('#queue-list .queue-item').first().click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
+      state.classify = {status: 200, json: {proposal: []}};
+      await page.locator('#btn-classify').click();
+      await page.waitForTimeout(300);
+      assert.equal(await page.locator('#proposal-content .proposal-pill').count(), 0, 'Array-valued proposal must not render');
+      assert.match(await page.locator('#proposal-content').textContent(), /Нажмите «Запросить предложение»/);
+      assert.equal(await page.locator('#btn-classify').isEnabled(), true);
+      state.classify = {status: 200, json: {}};
+      await page.locator('#btn-classify').click();
+      await page.waitForTimeout(300);
+      assert.equal(await page.locator('#proposal-content .proposal-pill').count(), 0);
+      assert.deepEqual(writes, ['/api/complaints/synthetic-ui-0/classify', '/api/complaints/synthetic-ui-0/classify']);
+    });
+
+    await check('intake still reports success when the follow-up fetch fails', async (page, writes, state) => {
+      await page.locator('#intake-region').selectOption('KZ-AST');
+      await page.locator('#intake-text').fill('Синтетическое обращение для проверки');
+      await page.locator('#btn-submit-intake').click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
+      assert.equal(await page.locator('#intake-error').isVisible(), false);
+      state.complaint = {status: 503, json: {detail: 'synthetic_failure'}};
+      await page.locator('#intake-region').selectOption('KZ-AST');
+      await page.locator('#intake-text').fill('Второе синтетическое обращение');
+      await page.locator('#btn-submit-intake').click();
+      await page.waitForFunction(() => document.getElementById('intake-error').textContent.includes('автоматический выбор'));
+      assert.doesNotMatch(await page.locator('#intake-error').textContent(), /Сетевая ошибка при отправке/);
+      assert.equal(await page.locator('#active-id').textContent(), 'synthetic-ui-0');
+      assert.equal(await page.locator('#intake-text').inputValue(), '');
+      assert.equal(await page.locator('#queue-list .queue-item').count(), 3);
+      assert.deepEqual(writes, ['/api/intake', '/api/intake']);
     });
 
     await check('malformed similar members fail visibly and recover on reselection', async (page, writes, state) => {
