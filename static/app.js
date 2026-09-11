@@ -87,7 +87,7 @@ async function loadStats() {
       const row = document.createElement("div");
       row.className = "breakdown-row";
       const name = topicMap[topicId] || topicId;
-      row.innerHTML = `<span>${name}</span><strong>${count}</strong>`;
+      row.append(textElement("span", name), textElement("strong", count));
       breakdown.appendChild(row);
     }
   } catch (err) {
@@ -108,17 +108,20 @@ async function loadQueue() {
     }
     complaints.forEach(c => {
       const item = document.createElement("li");
-      item.className = "queue-item";
-      if (activeComplaint && activeComplaint.id === c.id) {
-        item.classList.add("selected");
-      }
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "queue-item";
+      button.dataset.complaintId = c.id;
+      const selected = activeComplaint?.id === c.id;
+      button.classList.toggle("selected", selected);
+      button.setAttribute("aria-pressed", String(selected));
       const badgeClass = c.decision_status === "confirmed" ? "badge-confirmed" : "badge-pending";
       const shortText = c.text.length > 55 ? c.text.substring(0, 55) + "..." : c.text;
-      item.innerHTML = `
-        <span title="${c.text}">${shortText}</span>
-        <span class="badge ${badgeClass}">${c.decision_status}</span>
-      `;
-      item.addEventListener("click", () => selectComplaint(c));
+      const preview = textElement("span", shortText);
+      preview.title = c.text;
+      button.append(preview, textElement("span", c.decision_status, `badge ${badgeClass}`));
+      button.addEventListener("click", () => selectComplaint(c));
+      item.appendChild(button);
       list.appendChild(item);
     });
   } catch (err) {
@@ -159,7 +162,11 @@ function selectComplaint(c) {
     document.getElementById("proposal-content").innerHTML = '<p class="empty-state">Нажмите «Запросить предложение» для анализа текста.</p>';
   }
   loadSimilar(c.id);
-  loadQueue();
+  document.querySelectorAll("#queue-list button").forEach(button => {
+    const selected = button.dataset.complaintId === c.id;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
 }
 
 async function handleIntakeSubmit(e) {
@@ -241,10 +248,13 @@ function renderProposal(proposal) {
   }
   const tObj = cachedTopics.find(t => t.id === proposal.topic);
   const topicName = tObj ? tObj.name_ru : proposal.topic;
-  container.innerHTML = `
-    <div>Предлагаемая тема: <span class="proposal-pill">${topicName}</span></div>
-    <div style="font-size:0.85rem;margin-top:0.3rem;">Служба: <strong>${proposal.service_id || "—"}</strong> | Приоритет: <strong>${proposal.priority}</strong></div>
-  `;
+  const topic = textElement("div", "Предлагаемая тема: ");
+  topic.appendChild(textElement("span", topicName, "proposal-pill"));
+  const details = textElement("div", "Служба: ");
+  details.style.cssText = "font-size:0.85rem;margin-top:0.3rem;";
+  details.append(textElement("strong", proposal.service_id || "—"), " | Приоритет: ",
+    textElement("strong", proposal.priority));
+  container.replaceChildren(topic, details);
 }
 
 async function loadSimilar(complaintId) {
@@ -261,12 +271,16 @@ async function loadSimilar(complaintId) {
     candidates.forEach(cand => {
       const div = document.createElement("div");
       div.className = "similar-item";
-      const resText = cand.resolution_text ? `<div style="color:#059669;">Решение: ${cand.resolution_text}</div>` : "";
-      div.innerHTML = `
-        <div><strong>[${cand.complaint_id}]</strong> ${cand.excerpt}</div>
-        <div style="color:#64748b;font-size:0.75rem;">Статус: ${cand.decision_status} | Источник: ${cand.origin}</div>
-        ${resText}
-      `;
+      const excerpt = document.createElement("div");
+      excerpt.append(textElement("strong", `[${cand.complaint_id}]`), ` ${cand.excerpt}`);
+      const metadata = textElement("div", `Статус: ${cand.decision_status} | Источник: ${cand.origin}`);
+      metadata.style.cssText = "color:#64748b;font-size:0.75rem;";
+      div.append(excerpt, metadata);
+      if (cand.resolution_text) {
+        const resolution = textElement("div", `Решение: ${cand.resolution_text}`);
+        resolution.style.color = "#059669";
+        div.appendChild(resolution);
+      }
       container.appendChild(div);
     });
   } catch (err) {
@@ -317,6 +331,13 @@ async function handleConfirmSubmit(e) {
   } catch (err) {
     showError(errBox, "Сетевая ошибка подтверждения");
   }
+}
+
+function textElement(tag, text, className = "") {
+  const element = document.createElement(tag);
+  element.textContent = text;
+  element.className = className;
+  return element;
 }
 
 function showError(box, msg) {

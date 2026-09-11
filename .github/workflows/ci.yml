@@ -4,7 +4,6 @@ on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ main ]
 
 jobs:
   test:
@@ -27,3 +26,24 @@ jobs:
         run: python scripts/check_coverage.py
       - name: Verify local audit with synthetic inputs
         run: python scripts/test_audit_received_csv.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser QA tools outside the repository
+        run: |
+          npm install --prefix "$RUNNER_TEMP/p109-ui" --no-audit --no-fund playwright@1.62.1
+          "$RUNNER_TEMP/p109-ui/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Verify operator safety and coverage UI
+        env:
+          P109_BROWSER: chromium
+        run: |
+          export NODE_PATH="$RUNNER_TEMP/p109-ui/node_modules"
+          DATABASE_PATH="$RUNNER_TEMP/p109-ui.db" python -m uvicorn app:app --host 127.0.0.1 --port 8765 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          for attempt in {1..30}; do
+            if curl --silent --fail http://127.0.0.1:8765/api/health > /dev/null; then break; fi
+            sleep 1
+          done
+          node scripts/check_operator_ui.cjs http://127.0.0.1:8765
+          node scripts/check_coverage_ui.cjs http://127.0.0.1:8765

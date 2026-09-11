@@ -1,5 +1,34 @@
 # Pulse 109 — текущая передача работы
 
+## 2026-09-11: безопасный и клавиатурный операторский список
+
+Ветка: `fix/operator-text-keyboard`, база: `e48902f` из открытого [PR #43](https://github.com/Eliasans02/pulse109/pull/43). Отдельный PR направляется в `olga/data-coverage`, не в main; merge не выполняется. Актуальные HEAD/CI проверять через GitHub.
+
+- **Задача:** только часть P109-09/P109-36: безопасный вывод строк и клавиатурный выбор. Полные задачи не закрыты.
+- **Контракт до правки:** `static/app.js`, `static/style.css`, синтетический `scripts/check_operator_ui.cjs`, эта передача. Приёмка: HTML показывается буквально во всех динамических путях оператора; нативные кнопки доступны Tab/Enter/Space; фокус сохраняется; выбор не отправляет подтверждение.
+- **Уточнение проверки:** `.github/workflows/ci.yml` запускает CI и для зависимых PR, оба браузерных теста — на Linux с Playwright 1.62.1 вне runtime приложения. Сценарии `check_coverage_ui.cjs` не ослаблялись и не изменялись. Установка браузера следует [официальному CI-руководству](https://playwright.dev/docs/ci).
+- **Исправлено:** текст/атрибут title в очереди, похожие обращения и решения, предложение темы/службы/приоритета и сводка тем выводятся через текстовые DOM-узлы. Оставшийся innerHTML содержит только константную разметку. Выбор меняет выделение и aria-pressed, не пересоздаёт очередь; фокус виден и не теряется.
+- **Не менялось:** API, SQLite, аудит подтверждений, ML, ingestion, реальные CSV, fixtures, research и runtime-зависимости. Навыки security-review/frontend-a11y использованы для текстовых DOM-узлов и нативных кнопок; это не полный security/accessibility audit.
+- **TDD:** на базе e48902f все 4 новые UI-проверки дали FAIL; после правки все 4 PASS, exit 0. Локально также PASS: check_plan (42/17/35), 10 coverage, 14 smoke; git diff --check и JS syntax checks — exit 0. Chrome 152.0.7977.84, Playwright 1.62.1; синтетический скриншот просмотрен, HTML буквальный, фокус виден.
+- **Ограничение локальной QA:** исходный coverage UI на этом macOS/headless Chrome и Chromium Headless Shell останавливается на UI 2: End не меняет значение нативного select. Это не засчитано как PASS. Полная браузерная проверка вынесена в Linux CI; результат будет зафиксирован после запуска.
+- **Окружение:** Python 3.14.4, FastAPI 0.141.1, Uvicorn 0.52.4, NumPy 2.5.3 установлены в отдельную .venv по существующему requirements.txt. Песочница запрещала bind порта/запуск Chrome; сервер, smoke и браузерные тесты запускались с разрешением вне неё.
+
+Checkout: `/Users/eliasansariy/.config/soloterm/demo/pulse109-operator`. Локальная проверка из его корня (сервер в отдельной консоли, отдельная синтетическая БД):
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python scripts/check_plan.py
+.venv/bin/python scripts/check_coverage.py
+.venv/bin/python scripts/smoke.py
+DATABASE_PATH=/private/tmp/pulse109-operator.qslzDd/ui.db .venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8766
+export NODE_PATH=/Users/eliasansariy/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules
+P109_BROWSER=chrome node scripts/check_operator_ui.cjs http://127.0.0.1:8766
+P109_BROWSER=chrome node scripts/check_coverage_ui.cjs http://127.0.0.1:8766
+```
+Путь временной БД относится к этому запуску; в новом окружении создать свою временную папку через mktemp. NODE_PATH указывает на установленный вне проекта Playwright. CI воспроизводит оба UI-теста на Linux без этих локальных путей.
+
+## Предыдущая передача: компонент покрытия
+
 Дата: 2026-09-10. Ветка: `olga/data-coverage`, база: `a6b9443`.
 Код и проверенный research: [5ceec95](https://github.com/Eliasans02/pulse109/commit/5ceec958eacb217f41b666f3fe69aee28a741e5a). [PR #43](https://github.com/Eliasans02/pulse109/pull/43) открыт, не слит; последующий commit обновляет только ссылки этой передачи. Актуальный HEAD проверять через git/PR.
 Задача: [P109-26](https://github.com/Eliasans02/pulse109/issues/26), только компонент покрытия.
@@ -65,10 +94,10 @@ $env:NODE_PATH='C:/Users/oarka/.cache/codex-runtimes/codex-primary-runtime/depen
 
 ## Следующие три задачи
 
-1. **Ольга / следующая модель — безопасный и клавиатурный операторский список, частично P109-09/P109-36.** Предсуществующий `static/app.js` вставляет текст обращения/решения через innerHTML, а строки очереди доступны лишь по click. Убрать HTML-интерпретацию пользовательских строк, сделать выбор нативной кнопкой; приёмка: синтетический HTML отображается буквально, Tab/Enter/Space выбирают обращение, smoke и coverage UI проходят. Не объявлять всю безопасность P109-36 закрытой.
+1. **Ильяс / независимый reviewer — проверить зависимые PR покрытия и операторского исправления.** Сверить HEAD и CI, просмотреть минимальный diff, подтвердить отсутствие динамического HTML и работу Tab/Enter/Space. Дождаться успешных обоих UI-тестов в CI. Не выполнять merge без отдельного решения Ильяса и не закрывать полностью P109-09/P109-26/P109-36.
 2. **Ильяс — P109-03/P109-04, локальная семантическая проверка.** Проверить с человеком смысл Akmola `request_subject` на небольшой разрешённой выборке; фиксировать долю исходных текстов, RU/KK/mixed/unknown, связь с метками/исходом и условия использования. Приёмка: только сводный вердикт о пригодности и конкретных ограничениях, без публикации примеров; затем решение о двух обучающих корпусах. Наличие 13 недостающих регионов не блокирует корректный пилот на пригодной части.
 3. **Нурали с Ольгой — QA покрытия, поддержка P109-26.** За 20–30 минут найти поставленный/отсутствующий регион, непроверенное поле и историю, отличить demo от CSV. Приёмка-цель: пять правильных ответов, записанные время/ошибки; не называть это ML-оценкой. Затем 12 синтетических пар для проверки формулировок связи по research.
 
 ## Первый запрос следующей модели
 
-> Продолжай Pulse 109 с актуального PR/ветки olga/data-coverage; проверь status/HEAD, сохрани более новые правки. Выполни только первый пункт handoff: безопасный вывод строк в static/app.js и клавиатурный выбор очереди. Это ранее существовавшие проблемы, не дефекты coverage. Сначала контракт и синтетические регрессионные проверки HTML как текста и Tab/Enter/Space, затем минимальная правка, smoke/coverage UI и PR без merge. Не читай реальные CSV, не меняй API/SQLite/ML/стек и не повторяй исследование. Обнови этот handoff реальными результатами. Прочитать только AGENTS.md, docs/handoff.md, P109-09/P109-36 в planning/backlog.json, static/app.js, static/index.html, static/style.css, scripts/smoke.py и scripts/check_coverage_ui.cjs; scripts/check_coverage.py нужен smoke как импорт. Остальной research не нужен.
+> Проведи независимое ревью Pulse 109: актуальная ветка fix/operator-text-keyboard поверх olga/data-coverage (PR #43). Проверь status/HEAD/CI, сохрани более новые правки. Прочитай AGENTS.md, docs/handoff.md, diff относительно базы, static/app.js, static/style.css, scripts/check_operator_ui.cjs и .github/workflows/ci.yml; остальные файлы только по необходимости. Проверь безопасный текстовый вывод, Tab/Enter/Space, сохранение фокуса и отсутствие автоматического подтверждения. Повтори проверки в подходящем окружении; отдельно отметь известное ограничение native select в macOS headless QA. Верни findings с файлами/строками или отсутствие находок с границами проверки. Не меняй код, не делай merge, не читай CSV и не повторяй research. После ревью следующая работа — локальная семантическая проверка P109-03/P109-04 с человеком, а не запуск обучения на неподтверждённом тексте.
