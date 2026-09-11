@@ -12,6 +12,7 @@ const candidate = {
   decision_status: html, origin: html,
 };
 const proposal = {topic: 'test_topic', service_id: html, priority: html};
+const confirmedComplaint = {...complaints[0], decision_status: 'confirmed', topic: 'test_topic', service_id: 'srv-test', priority: 'normal'};
 
 async function clickRefreshAndSettle(page, state) {
   const before = state.queueGets.length;
@@ -33,7 +34,7 @@ async function main() {
     page.setDefaultTimeout(4000);
     const errors = [];
     const writes = [];
-    const state = {complaints: options.complaints || {status: 200, json: {complaints}}, similar: options.similar || {status: 200, json: {candidates: [candidate]}}, classify: options.classify || {status: 200, json: {proposal}}, queueGets: []};
+    const state = {complaints: options.complaints || {status: 200, json: {complaints}}, similar: options.similar || {status: 200, json: {candidates: [candidate]}}, classify: options.classify || {status: 200, json: {proposal}}, confirm: options.confirm || {status: 200, json: {complaint: confirmedComplaint}}, queueGets: []};
     page.on('pageerror', error => errors.push(error.name));
     await page.route('**/api/**', async route => {
       const request = route.request();
@@ -57,6 +58,11 @@ async function main() {
         return route.fulfill({status: config.status, json: config.json});
       } else if (path.endsWith('/classify')) {
         const config = state.classify;
+        if (config.delayMs) await new Promise(resolve => setTimeout(resolve, config.delayMs));
+        if (config.raw !== undefined) return route.fulfill({status: config.status, contentType: 'application/json', body: config.raw});
+        return route.fulfill({status: config.status, json: config.json});
+      } else if (path.endsWith('/confirm')) {
+        const config = state.confirm;
         if (config.delayMs) await new Promise(resolve => setTimeout(resolve, config.delayMs));
         if (config.raw !== undefined) return route.fulfill({status: config.status, contentType: 'application/json', body: config.raw});
         return route.fulfill({status: config.status, json: config.json});
@@ -371,6 +377,40 @@ async function main() {
       assert.equal(await page.locator('#confirm-service').inputValue(), '');
       assert.equal(await page.locator('#btn-classify').isEnabled(), true);
       assert.deepEqual(writes, ['/api/complaints/synthetic-ui-0/classify']);
+    });
+
+    await check('a delayed confirmation cannot pull the operator back to the confirmed complaint', async (page, writes, state) => {
+      await page.locator('#queue-list .queue-item').first().click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
+      await page.locator('#confirm-topic').selectOption('test_topic');
+      await page.locator('#confirm-service').fill('srv-test');
+      state.confirm = {status: 200, delayMs: 800, json: {complaint: confirmedComplaint}};
+      await page.locator('#btn-confirm').click();
+      await page.waitForTimeout(100);
+      await page.locator('#queue-list .queue-item').nth(1).click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-1');
+      await page.waitForTimeout(1000);
+      assert.equal(await page.locator('#active-id').textContent(), 'synthetic-ui-1');
+      assert.equal(await page.locator('#confirm-success').isVisible(), true, 'Confirmation outcome must stay visible');
+      assert.match(await page.locator('#confirm-success').textContent(), /synthetic-ui-0/);
+      assert.equal(await page.locator('#confirm-topic').inputValue(), '');
+      assert.equal(await page.locator('#confirm-service').inputValue(), '');
+      assert.equal(await page.locator('#confirm-priority').inputValue(), 'normal');
+      assert.deepEqual(writes, ['/api/complaints/synthetic-ui-0/confirm']);
+    });
+
+    await check('confirming the current complaint still updates card and queue', async (page, writes, state) => {
+      await page.locator('#queue-list .queue-item').first().click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
+      await page.locator('#confirm-topic').selectOption('test_topic');
+      await page.locator('#confirm-service').fill('srv-test');
+      await page.locator('#btn-confirm').click();
+      await page.waitForFunction(() => document.getElementById('active-status-badge').textContent === 'confirmed');
+      assert.equal(await page.locator('#active-id').textContent(), 'synthetic-ui-0');
+      assert.match(await page.locator('#confirm-success').textContent(), /успешно подтверждено/);
+      assert.equal(await page.locator('#queue-list').getAttribute('aria-busy'), 'false');
+      assert.equal(await page.locator('#queue-list .queue-item').count(), 3);
+      assert.deepEqual(writes, ['/api/complaints/synthetic-ui-0/confirm']);
     });
   } finally {
     await browser.close();

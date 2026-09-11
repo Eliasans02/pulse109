@@ -352,6 +352,8 @@ function handleTopicChange() {
 async function handleConfirmSubmit(e) {
   e.preventDefault();
   if (!activeComplaint) return;
+  const complaint = activeComplaint;
+  const generation = selectionGeneration;
   const errBox = document.getElementById("confirm-error");
   const succBox = document.getElementById("confirm-success");
   errBox.style.display = "none";
@@ -365,7 +367,7 @@ async function handleConfirmSubmit(e) {
   if (!service_id) { showError(errBox, "Укажите ответственную службу"); return; }
 
   try {
-    const res = await fetch(`/api/complaints/${activeComplaint.id}/confirm`, {
+    const res = await fetch(`/api/complaints/${complaint.id}/confirm`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ topic, service_id, priority, actor: "operator_demo" }),
@@ -378,7 +380,9 @@ async function handleConfirmSubmit(e) {
     const data = await res.json();
     succBox.textContent = `Решение для обращения ${data.complaint.id} успешно подтверждено!`;
     succBox.style.display = "block";
-    selectComplaint(data.complaint);
+    if (selectionGeneration === generation) {
+      selectComplaint(data.complaint);
+    }
     await loadStats();
     await loadQueue();
   } catch (err) {
