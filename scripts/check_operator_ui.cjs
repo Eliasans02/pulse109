@@ -33,7 +33,7 @@ async function main() {
     page.setDefaultTimeout(4000);
     const errors = [];
     const writes = [];
-    const state = {complaints: options.complaints || {status: 200, json: {complaints}}, similar: options.similar || {status: 200, json: {candidates: [candidate]}}, queueGets: []};
+    const state = {complaints: options.complaints || {status: 200, json: {complaints}}, similar: options.similar || {status: 200, json: {candidates: [candidate]}}, classify: options.classify || {status: 200, json: {proposal}}, queueGets: []};
     page.on('pageerror', error => errors.push(error.name));
     await page.route('**/api/**', async route => {
       const request = route.request();
@@ -55,9 +55,12 @@ async function main() {
         if (config.delayMs) await new Promise(resolve => setTimeout(resolve, config.delayMs));
         if (config.raw !== undefined) return route.fulfill({status: config.status, contentType: 'application/json', body: config.raw});
         return route.fulfill({status: config.status, json: config.json});
-      } else if (path.endsWith('/classify')) json = {proposal};
-      else if (path.endsWith('/classify')) json = {proposal};
-      else return route.fulfill({status: 503, json: {detail: {error: 'synthetic_test_unavailable'}}});
+      } else if (path.endsWith('/classify')) {
+        const config = state.classify;
+        if (config.delayMs) await new Promise(resolve => setTimeout(resolve, config.delayMs));
+        if (config.raw !== undefined) return route.fulfill({status: config.status, contentType: 'application/json', body: config.raw});
+        return route.fulfill({status: config.status, json: config.json});
+      } else return route.fulfill({status: 503, json: {detail: {error: 'synthetic_test_unavailable'}}});
       return route.fulfill({json});
     });
     try {
@@ -296,6 +299,78 @@ async function main() {
       await page.locator('#queue-list .queue-item').nth(2).click();
       await page.waitForFunction(() => document.getElementById('similar-list').textContent.includes('Похожих обращений не найдено'));
       assert.deepEqual(writes, []);
+    });
+
+    await check('classification for a replaced selection cannot update the new selection', async (page, writes, state) => {
+      await page.locator('#queue-list .queue-item').first().click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
+      state.classify = {status: 200, delayMs: 800, json: {proposal: {topic: 'test_topic', service_id: 'srv-stale', priority: 'urgent'}}};
+      await page.locator('#btn-classify').click();
+      assert.equal(await page.locator('#btn-classify').isEnabled(), false);
+      await page.waitForTimeout(100);
+      await page.locator('#queue-list .queue-item').nth(1).click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-1');
+      state.classify = {status: 200, json: {proposal: {topic: 'test_topic', service_id: 'srv-current', priority: 'normal'}}};
+      await page.waitForTimeout(1000);
+      assert.equal(await page.locator('#active-id').textContent(), 'synthetic-ui-1');
+      assert.equal(await page.locator('#proposal-content .proposal-pill').count(), 0, 'Stale proposal must not render');
+      assert.equal(await page.locator('#confirm-topic').inputValue(), '');
+      assert.equal(await page.locator('#confirm-service').inputValue(), '');
+      assert.equal(await page.locator('#confirm-priority').inputValue(), 'normal');
+      assert.deepEqual(writes, ['/api/complaints/synthetic-ui-0/classify']);
+    });
+
+    await check('reselecting the original complaint does not revive its stale classification', async (page, writes, state) => {
+      await page.locator('#queue-list .queue-item').first().click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
+      state.classify = {status: 200, delayMs: 600, json: {proposal: {topic: 'test_topic', service_id: 'srv-stale', priority: 'urgent'}}};
+      await page.locator('#btn-classify').click();
+      await page.waitForTimeout(100);
+      await page.locator('#queue-list .queue-item').nth(1).click();
+      await page.locator('#queue-list .queue-item').first().click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
+      await page.waitForTimeout(900);
+      assert.equal(await page.locator('#proposal-content .proposal-pill').count(), 0);
+      assert.equal(await page.locator('#confirm-service').inputValue(), '');
+      assert.equal(await page.locator('#btn-classify').isEnabled(), true);
+      assert.deepEqual(writes, ['/api/complaints/synthetic-ui-0/classify']);
+    });
+
+    await check('an older classification cannot unlock the button or overwrite the newer proposal', async (page, writes, state) => {
+      await page.locator('#queue-list .queue-item').first().click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
+      state.classify = {status: 200, delayMs: 400, json: {proposal: {topic: 'test_topic', service_id: 'srv-stale', priority: 'urgent'}}};
+      await page.locator('#btn-classify').click();
+      await page.waitForTimeout(100);
+      await page.locator('#queue-list .queue-item').nth(1).click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-1');
+      state.classify = {status: 200, delayMs: 1200, json: {proposal: {topic: 'test_topic', service_id: 'srv-current', priority: 'normal'}}};
+      await page.locator('#btn-classify').click();
+      await page.waitForTimeout(700);
+      assert.equal(await page.locator('#btn-classify').isEnabled(), false, 'Stale completion must not re-enable while the newer request loads');
+      assert.equal(await page.locator('#proposal-content .proposal-pill').count(), 0);
+      await page.waitForFunction(() => document.querySelector('#proposal-content .proposal-pill') !== null);
+      assert.equal(await page.locator('#btn-classify').isEnabled(), true);
+      assert.equal(await page.locator('#confirm-service').inputValue(), 'srv-current');
+      assert.equal(await page.locator('#confirm-priority').inputValue(), 'normal');
+      assert.equal(await page.locator('#active-id').textContent(), 'synthetic-ui-1');
+    });
+
+    await check('an obsolete classification failure does not alter the current selection', async (page, writes, state) => {
+      await page.locator('#queue-list .queue-item').first().click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
+      state.classify = {status: 500, delayMs: 400, json: {detail: 'synthetic_failure'}};
+      await page.locator('#btn-classify').click();
+      await page.waitForTimeout(100);
+      await page.locator('#queue-list .queue-item').nth(1).click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-1');
+      state.classify = {status: 200, json: {proposal: {topic: 'test_topic', service_id: 'srv-current', priority: 'normal'}}};
+      await page.waitForTimeout(700);
+      assert.equal(await page.locator('#active-id').textContent(), 'synthetic-ui-1');
+      assert.equal(await page.locator('#proposal-content .proposal-pill').count(), 0, 'Failed stale request must not render');
+      assert.equal(await page.locator('#confirm-service').inputValue(), '');
+      assert.equal(await page.locator('#btn-classify').isEnabled(), true);
+      assert.deepEqual(writes, ['/api/complaints/synthetic-ui-0/classify']);
     });
   } finally {
     await browser.close();

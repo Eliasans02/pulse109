@@ -3,6 +3,8 @@ let cachedTopics = [];
 let cachedRegions = [];
 let queueRequestId = 0;
 let similarRequestId = 0;
+let classifyRequestId = 0;
+let selectionGeneration = 0;
 
 document.addEventListener("DOMContentLoaded", () => {
   initApp();
@@ -162,6 +164,7 @@ async function loadQueue() {
 }
 
 function selectComplaint(c) {
+  selectionGeneration += 1;
   activeComplaint = c;
   document.getElementById("active-id").textContent = c.id;
   document.getElementById("active-text").textContent = c.text;
@@ -246,27 +249,37 @@ async function handleIntakeSubmit(e) {
 
 async function handleClassify() {
   if (!activeComplaint) return;
+  const complaint = activeComplaint;
+  const requestId = ++classifyRequestId;
+  const generation = selectionGeneration;
   const btn = document.getElementById("btn-classify");
   btn.disabled = true;
+  let proposal;
   try {
-    const res = await fetch(`/api/complaints/${activeComplaint.id}/classify`, { method: "POST" });
+    const res = await fetch(`/api/complaints/${complaint.id}/classify`, { method: "POST" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    renderProposal(data.proposal);
-    if (data.proposal.topic) {
-      document.getElementById("confirm-topic").value = data.proposal.topic;
-    }
-    if (data.proposal.service_id) {
-      document.getElementById("confirm-service").value = data.proposal.service_id;
-    }
-    if (data.proposal.priority) {
-      document.getElementById("confirm-priority").value = data.proposal.priority;
-    }
-    await loadSimilar(activeComplaint.id);
+    if (!data || !data.proposal || typeof data.proposal !== "object") throw new Error("Invalid classification response");
+    proposal = data.proposal;
   } catch (err) {
     console.error("Classification error", err);
+    return;
   } finally {
-    btn.disabled = false;
+    if (requestId === classifyRequestId) btn.disabled = false;
   }
+  if (requestId !== classifyRequestId) return;
+  if (selectionGeneration !== generation) return;
+  renderProposal(proposal);
+  if (proposal.topic) {
+    document.getElementById("confirm-topic").value = proposal.topic;
+  }
+  if (proposal.service_id) {
+    document.getElementById("confirm-service").value = proposal.service_id;
+  }
+  if (proposal.priority) {
+    document.getElementById("confirm-priority").value = proposal.priority;
+  }
+  loadSimilar(complaint.id);
 }
 
 function renderProposal(proposal) {
