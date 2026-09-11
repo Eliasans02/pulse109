@@ -229,6 +229,41 @@ async function main() {
       assert.equal(await refresh.evaluate(el => el === document.activeElement), true);
       assert.deepEqual(writes, []);
     }, {complaints: {status: 503, json: {detail: 'synthetic_failure'}}, waitForItems: 0});
+
+    await check('malformed rows fail safely and keep prior rows stale', async (page, writes, state) => {
+      await page.locator('#queue-list .queue-item').first().click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
+      const topicBefore = await page.locator('#confirm-topic').inputValue();
+      state.complaints = {status: 200, json: {complaints: [null]}};
+      await clickRefreshAndSettle(page, state);
+      const errorBox = page.locator('#queue-error');
+      assert.equal(await errorBox.isVisible(), true);
+      assert.match(await errorBox.textContent(), /устаре/);
+      assert.equal(await page.locator('#queue-list').getAttribute('data-stale'), 'true');
+      assert.equal(await page.locator('#queue-list .queue-item').count(), 3);
+      assert.equal(await page.locator('#active-id').textContent(), 'synthetic-ui-0');
+      assert.equal(await page.locator('#confirm-topic').inputValue(), topicBefore);
+      state.complaints = {status: 200, json: {complaints: [{id: 'synthetic-ui-x'}]}};
+      await clickRefreshAndSettle(page, state);
+      assert.equal(await errorBox.isVisible(), true);
+      assert.equal(await page.locator('#queue-list .queue-item').count(), 3);
+      state.complaints = {status: 200, json: {complaints}};
+      await clickRefreshAndSettle(page, state);
+      assert.equal(await errorBox.isVisible(), false);
+      assert.equal(await page.locator('#queue-list').getAttribute('data-stale'), null);
+      assert.equal(await page.locator('#queue-list .queue-item').count(), 3);
+      assert.deepEqual(writes, []);
+    });
+
+    await check('malformed rows on first load show a generic error, not empty', async page => {
+      const errorBox = page.locator('#queue-error');
+      await errorBox.waitFor({state: 'visible'});
+      assert.match(await errorBox.textContent(), /Не удалось загрузить очередь/);
+      assert.equal(await page.locator('#queue-list .empty-state').count(), 0);
+      assert.equal(await page.locator('#queue-list .queue-item').count(), 0);
+      assert.equal(await page.locator('#queue-list').getAttribute('aria-busy'), 'false');
+      assert.doesNotMatch(await page.locator('#queue-status').textContent(), /[0-9]/);
+    }, {complaints: {status: 200, json: {complaints: [null]}}, waitForItems: 0});
   } finally {
     await browser.close();
   }

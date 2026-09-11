@@ -106,13 +106,31 @@ async function loadQueue() {
   status.textContent = "Загружаем очередь…";
   errorBox.hidden = true;
 
-  let complaints;
+  let rows;
   try {
     const res = await fetch("/api/complaints?limit=30");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (!data || !Array.isArray(data.complaints)) throw new Error("Invalid queue response");
-    complaints = data.complaints;
+    rows = data.complaints.map(c => {
+      if (!c || typeof c.id !== "string" || typeof c.text !== "string") throw new Error("Invalid queue response");
+      const item = document.createElement("li");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "queue-item";
+      button.dataset.complaintId = c.id;
+      const selected = activeComplaint?.id === c.id;
+      button.classList.toggle("selected", selected);
+      button.setAttribute("aria-pressed", String(selected));
+      const badgeClass = c.decision_status === "confirmed" ? "badge-confirmed" : "badge-pending";
+      const shortText = c.text.length > 55 ? c.text.substring(0, 55) + "..." : c.text;
+      const preview = textElement("span", shortText);
+      preview.title = c.text;
+      button.append(preview, textElement("span", c.decision_status, `badge ${badgeClass}`));
+      button.addEventListener("click", () => selectComplaint(c));
+      item.appendChild(button);
+      return item;
+    });
   } catch (err) {
     if (requestId !== queueRequestId) return;
     list.setAttribute("aria-busy", "false");
@@ -133,31 +151,13 @@ async function loadQueue() {
   if (requestId !== queueRequestId) return;
   list.setAttribute("aria-busy", "false");
   delete list.dataset.stale;
-  list.replaceChildren();
-  if (!complaints.length) {
-    list.appendChild(textElement("li", "Очередь пуста", "empty-state"));
+  if (!rows.length) {
+    list.replaceChildren(textElement("li", "Очередь пуста", "empty-state"));
     status.textContent = "Очередь пуста.";
     return;
   }
-  complaints.forEach(c => {
-    const item = document.createElement("li");
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "queue-item";
-    button.dataset.complaintId = c.id;
-    const selected = activeComplaint?.id === c.id;
-    button.classList.toggle("selected", selected);
-    button.setAttribute("aria-pressed", String(selected));
-    const badgeClass = c.decision_status === "confirmed" ? "badge-confirmed" : "badge-pending";
-    const shortText = c.text.length > 55 ? c.text.substring(0, 55) + "..." : c.text;
-    const preview = textElement("span", shortText);
-    preview.title = c.text;
-    button.append(preview, textElement("span", c.decision_status, `badge ${badgeClass}`));
-    button.addEventListener("click", () => selectComplaint(c));
-    item.appendChild(button);
-    list.appendChild(item);
-  });
-  status.textContent = `Показано обращений: ${complaints.length}`;
+  list.replaceChildren(...rows);
+  status.textContent = `Показано обращений: ${rows.length}`;
 }
 
 function selectComplaint(c) {
