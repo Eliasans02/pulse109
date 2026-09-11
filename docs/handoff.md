@@ -1,104 +1,89 @@
-# Pulse 109 — текущая передача работы
+# Pulse 109 — consolidated handoff
 
-## 2026-09-11: безопасный и клавиатурный операторский список
+## Review state — 2026-09-11
 
-Ветка: `fix/operator-text-keyboard`, база: `e48902f` из открытого [PR #43](https://github.com/Eliasans02/pulse109/pull/43). Открыт [PR #44](https://github.com/Eliasans02/pulse109/pull/44) в `olga/data-coverage`, не в main; оба PR не слиты. Код: [24e6e21](https://github.com/Eliasans02/pulse109/commit/24e6e21ce510cb92b926664ddfe3b4c5b247731f); следующий commit обновляет только передачу. Актуальные HEAD/CI проверять через GitHub.
+Branch `review/stack-consolidation`, base `deepseek/queue-states` at **f5cb0e7eb1ccdeb7500992c697eee15089d08b5d**. `main` remains **a6b9443b9927b472e4020d57c789303a6dd38f8b**. This task changes **docs/handoff.md only**; no merge, retarget, approval, issue closure or edit to application files/other models' worktrees. Historical handoffs remain in commits and linked PRs.
 
-- **Задача:** только часть P109-09/P109-36: безопасный вывод строк и клавиатурный выбор. Полные задачи не закрыты.
-- **Контракт до правки:** `static/app.js`, `static/style.css`, синтетический `scripts/check_operator_ui.cjs`, эта передача. Приёмка: HTML показывается буквально во всех динамических путях оператора; нативные кнопки доступны Tab/Enter/Space; фокус сохраняется; выбор не отправляет подтверждение.
-- **Уточнение проверки:** `.github/workflows/ci.yml` запускает CI и для зависимых PR, оба браузерных теста — на Linux с Playwright 1.62.1 вне runtime приложения. Сценарии `check_coverage_ui.cjs` не ослаблялись и не изменялись. Установка браузера следует [официальному CI-руководству](https://playwright.dev/docs/ci).
-- **Исправлено:** текст/атрибут title в очереди, похожие обращения и решения, предложение темы/службы/приоритета и сводка тем выводятся через текстовые DOM-узлы. Оставшийся innerHTML содержит только константную разметку. Выбор меняет выделение и aria-pressed, не пересоздаёт очередь; фокус виден и не теряется.
-- **Не менялось:** API, SQLite, аудит подтверждений, ML, ingestion, реальные CSV, fixtures, research и runtime-зависимости. Навыки security-review/frontend-a11y использованы для текстовых DOM-узлов и нативных кнопок; это не полный security/accessibility audit.
-- **TDD:** на базе e48902f все 4 новые UI-проверки дали FAIL; после правки все 4 PASS, exit 0. Локально также PASS: check_plan (42/17/35), 10 coverage, 14 smoke; git diff --check и JS syntax checks — exit 0. Chrome 152.0.7977.84, Playwright 1.62.1; синтетический скриншот просмотрен, HTML буквальный, фокус виден.
-- **CI:** [run 34565794005](https://github.com/Eliasans02/pulse109/actions/runs/34565794005) для 24e6e21 — completed/success. Linux/Python 3.11: план, 14 smoke, 10 coverage, 8 synthetic audit, 4 operator UI и все 6 coverage UI сценариев — PASS. Исходные клавиатурные проверки покрытия сохранены.
-- **Ограничение локальной QA:** исходный coverage UI на этом macOS/headless Chrome и Chromium Headless Shell останавливается на UI 2: End не меняет значение нативного select. Это не засчитано как локальный PASS; тот же неизменённый тест полностью прошёл в Linux CI.
-- **Окружение:** Python 3.14.4, FastAPI 0.141.1, Uvicorn 0.52.4, NumPy 2.5.3 установлены в отдельную .venv по существующему requirements.txt. Песочница запрещала bind порта/запуск Chrome; сервер, smoke и браузерные тесты запускались с разрешением вне неё.
+**Contract recorded before editing:** Issue P109-09/P109-26/P109-36 review support; Goal verify current stack/CI/ownership, test the cumulative synthetic application and consolidate one handoff; Allowed file docs/handoff.md; Inputs AGENTS, handoffs/PR metadata, inventory/data-contract metadata, relevant backlog and diffs; Acceptance exact heads/bases, findings, merge recommendation, actual checks and next task; Verification seven commands below; Dependencies human merge/security decisions and explicitly approved data sample; Evidence this handoff and a documentation-only PR. Scratch checks/logs stay outside Git. No organizer CSV reads.
 
-Checkout: `/Users/eliasansariy/.config/soloterm/demo/pulse109-operator`. Локальная проверка из его корня (сервер в отдельной консоли, отдельная синтетическая БД):
+## Stack and exact-head CI
+
+Two fresh GitHub/API checks confirmed all three PRs **open, unmerged, mergeable=true / clean**, with no submitted reviews in the snapshot. Technical mergeability is not human approval.
+
+| PR / scope | Head | Base | CI for that exact head |
+|---|---|---|---|
+| [#43](https://github.com/Eliasans02/pulse109/pull/43), partial P109-26 coverage | `olga/data-coverage` — `e48902fa92dcfdebc0940932ea24966080d3ed29` | `main` — `a6b9443` | [success](https://github.com/Eliasans02/pulse109/actions/runs/34498884660/job/102944294163) |
+| [#44](https://github.com/Eliasans02/pulse109/pull/44), partial P109-09/P109-36 operator text/keyboard | `fix/operator-text-keyboard` — `50a74fdbd3468994e2dddb06ecfac06259866643` | `olga/data-coverage` — `e48902f` | [success](https://github.com/Eliasans02/pulse109/actions/runs/34565975373/job/103158063113) |
+| [#45](https://github.com/Eliasans02/pulse109/pull/45), partial P109-09 queue states | `deepseek/queue-states` — `f5cb0e7eb1ccdeb7500992c697eee15089d08b5d` | `fix/operator-text-keyboard` — `50a74fd` | [success, 52s](https://github.com/Eliasans02/pulse109/actions/runs/34569240800/job/103167600059) |
+
+No Gemini/layout PR or branch appeared on origin in either check. Do not assume it is integrated. The #45 description's “Linux CI has not yet run” is stale; the exact-head result above supersedes it. Fetch/check again before taking action.
+
+**Recommended human merge order: #43 → #44 → #45**, resolving the #45 finding below first. Current stacked bases are correct. After an ancestor is merged, inspect/retarget its dependent PR to main and rerun CI; keep the dependency branch until then. Squash/rebase merging changes ancestry: each owner should restack only their delta on the resulting main, inspect the new diff and rerun CI. Do not blindly retarget a cumulative PR or reuse checks for a changed head. Elias/Ilyas decide and perform merges.
+
+Read-only graph commands all exited 0:
 ```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python scripts/check_plan.py
-.venv/bin/python scripts/check_coverage.py
-.venv/bin/python scripts/smoke.py
-DATABASE_PATH=/private/tmp/pulse109-operator.qslzDd/ui.db .venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8766
-export NODE_PATH=/Users/eliasansariy/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules
-P109_BROWSER=chrome node scripts/check_operator_ui.cjs http://127.0.0.1:8766
-P109_BROWSER=chrome node scripts/check_coverage_ui.cjs http://127.0.0.1:8766
+git merge-base --is-ancestor origin/main origin/olga/data-coverage
+git merge-base --is-ancestor origin/olga/data-coverage origin/fix/operator-text-keyboard
+git merge-base --is-ancestor origin/fix/operator-text-keyboard origin/deepseek/queue-states
+git merge-tree --write-tree origin/main origin/deepseek/queue-states
 ```
-Путь временной БД относится к этому запуску; в новом окружении создать свою временную папку через mktemp. NODE_PATH указывает на установленный вне проекта Playwright. CI воспроизводит оба UI-теста на Linux без этих локальных путей.
+Merge-tree produced `11624956a2221232f10cde9d96d2a5b08493818c` without conflicts; it did not create a merge commit or alter a branch/index/worktree. This verifies the captured graph, not future layout changes or application semantics.
 
-## Предыдущая передача: компонент покрытия
+| File ownership / overlap | Coordination |
+|---|---|
+| #43: coverage module/JS, inventory, coverage/audit tests; app/index/style/CI/planning/docs additions | Coverage metadata remains independent of complaint storage |
+| #44: app.js, style.css, check_operator_ui.cjs, CI, handoff | Literal text and keyboard foundation |
+| #45: app.js, index.html, check_operator_ui.cjs | Inherits #44; did not update handoff or style |
+| This review: docs/handoff.md only | Consolidates all three; no application fix |
 
-Дата: 2026-09-10. Ветка: `olga/data-coverage`, база: `a6b9443`.
-Код и проверенный research: [5ceec95](https://github.com/Eliasans02/pulse109/commit/5ceec958eacb217f41b666f3fe69aee28a741e5a). [PR #43](https://github.com/Eliasans02/pulse109/pull/43) открыт, не слит; последующий commit обновляет только ссылки этой передачи. Актуальный HEAD проверять через git/PR.
-Задача: [P109-26](https://github.com/Eliasans02/pulse109/issues/26), только компонент покрытия.
+The shared app.js/operator-test edits are ordered by ancestry. A later layout branch may overlap #44 style and #45 index; inspect its real base/hunks before integration. Ilyas coordinates owners; do not overwrite or force-push another branch.
 
-## Контракт до изменения кода
+## Finding
 
-- **Goal:** руководитель различает наличие регионального файла, проверку полей и демо; неизвестное не становится нулём.
-- **Allowed files:** `data_coverage.py`, `app.py` (только новый read-only endpoint), `static/index.html`, `static/coverage.js`, `static/style.css`, `scripts/check_coverage.py`, `scripts/smoke.py`, `.github/workflows/ci.yml`; точечные README/AGENTS/research/backlog/handoff updates. Без изменений ML, ingestion, complaint schema или аудита решений.
-- **Inputs:** `planning/data_inventory.json`, `planning/data_matrix.json`, существующий `REGIONS`; исходные CSV не читает веб-приложение.
-- **Acceptance:** 20 регионов, 7 поставленных/13 отсутствующих и 8 файлов выводятся из инвентаря; фильтр региона; статусы заголовков не объявляются проверкой содержимого; неизвестные строки/история/свежесть — null; отдельная подпись синтетических счётчиков; загрузка/пустое состояние/ошибка/повтор; управление клавиатурой.
-- **Tests:** свежие `python scripts/check_plan.py`, `python scripts/smoke.py`; новые проверки источников, null, фильтра, рассогласования файлов и безопасного 503; браузерная проверка клавиатуры и состояний.
-- **Dependencies:** P109-09 API доступен, issue #9 ещё открыт; P109-25 остаётся зависимостью полной витрины. Этот компонент не закрывает P109-26, P109-25 или национальное покрытие.
-- **Evidence:** команды, exit status, синтетический скриншот, независимое ревью, focused PR без merge.
+**[P2] #45 — validate all queue rows before replacing the last good list.** [static/app.js:136](https://github.com/Eliasans02/pulse109/blob/f5cb0e7eb1ccdeb7500992c697eee15089d08b5d/static/app.js#L136) clears the list after checking only that complaints is an array. Rendering at lines 142–152 is outside try/catch. Intercepted synthetic HTTP 200 `{"complaints":[null]}` throws at `c.id`; missing/non-string text also reaches `c.text.length`. Known rows disappear, the error remains hidden, aria-busy is false and the status remains «Загружаем очередь…». Current valid synthetic backend rows do not trigger it; the broken-response boundary does. This bypasses #45's new failure/stale-state behavior.
 
-Уточнение контракта после локального аудита: разрешены `scripts/audit_received_csv.py`, его синтетические тесты, необязательный `scripts/check_coverage_ui.cjs` и числовой `local_profile` в существующем inventory. UI показывает проверенный подсчёт **CSV-записей**; уникальность обращений, значения полей и полнота истории остаются непроверенными. Исходные файлы и полный промежуточный отчёт не входят в Git.
+Reproduction: load 20 synthetic fixtures, intercept the next queue GET with that body, click refresh. Actual probe result: `errors=["TypeError"], visibleError=false, visibleRows=0, status="Загружаем очередь…", stale=null`. The independent probe exited 0 **because the defect was reproduced**, not because desired product behavior passed. The existing 11 operator checks omit malformed array members. Fix separately: validate the entire candidate list and build a replacement before committing it; retain previous rows with a stale warning on failure; add synthetic regressions. No fix is included here.
 
-## Передано и границы
+No additional blocking finding was found in the reviewed #43/#44 diffs. Literal text rendering, native buttons, no confirmation on selection/refresh, latest queue response and coverage/mock separation passed the bounded checks. This is not final security/accessibility sign-off. Production authorization, historical resolution cutoffs, approved routing and request-selection races outside the queue guard still require their own review/workstreams; these tests do not establish their correctness.
 
-- **Работает:** read-only `/api/data-coverage`, 20 регионов из существующих источников, 7/13/8, регион/наличие файла, клавиатура, загрузка/пустое состояние/503/повтор, защита от позднего ответа. Подсчитано 1 036 858 CSV-записей; личные строки не публикуются.
-- **Mock:** классификация по правилам и кандидаты по теме, 20 синтетических fixtures, операторское подтверждение/аудит/SQLite-счётчики. Ни одна из двух моделей не обучена; настоящих метрик классификации/поиска нет.
-- **Недоступно:** проверенные темы/агрегаты организаторов, общий инцидент/повтор, прогноз, alerts, NL, PDF/XLSX. Последние четыре модуля возвращают 501. Нет production deployment, полного покрытия или завершённого P109-26.
-- **Данные:** все 8 файлов прочитаны локально, 0 blank/width/parser errors. Совпали размеры/заголовки; бинарная идентичность Drive, уникальность/перекрытие частей Павлодара, полнота истории, RU/KK и права на публикацию не установлены. Akmola `request_subject`: 3475/3506 заполнено, медиана 24, p95 50 символов — кандидат, не проверенный intake text. Караганда: оба формата времени неподдержаны; Акмола: 32 непустые даты не разобраны.
-- **Решения:** стек и две отдельные будущие fine-tuning ветки E5 сохранены; код/активы аналогов не включены. Полезность прецедента оценивается независимо от типа связи, исходные обращения сохраняются. Никаких измеренных улучшений времени/качества не заявлено.
+## Fresh verification — cumulative f5cb0e7
 
-## Воспроизведение и фактические проверки
+All existing test files were unchanged. No organizer CSV was opened; the audit test uses only synthetic inputs. Python 3.12.14, FastAPI 0.141.1, Uvicorn 0.52.4, Pydantic 2.13.5, NumPy 2.5.3 in the existing isolated project venv; external Playwright 1.62.1 + installed Edge on Windows. No new dependency.
 
-Linux/macOS setup и обычный запуск — README. В этом Windows-сеансе из корня workspace:
-```powershell
-$runtime = 'C:/Users/oarka/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe'
-& $runtime -m venv work/pulse109/.venv
-# Bundled runtime не содержит ensurepip; venv создан, pip bootstrap завершился ошибкой.
-& $runtime -m pip --python work/pulse109/.venv/Scripts/python.exe install -r work/pulse109-olga/requirements.txt
-$env:PYTHONUTF8='1'
-Set-Location work/pulse109-olga
-& ../pulse109/.venv/Scripts/python.exe scripts/check_plan.py
-& ../pulse109/.venv/Scripts/python.exe scripts/check_coverage.py
-& ../pulse109/.venv/Scripts/python.exe scripts/test_audit_received_csv.py
-& ../pulse109/.venv/Scripts/python.exe scripts/smoke.py
-```
-Все четыре финальные команды **exit 0**: план 42 задачи/17 требований/35 групп источников; **10 coverage**, **8 audit**, **14 smoke** проверок. Исходный `a6b9443` отдельно дал 13 smoke, exit 0. На ограниченном Windows запуске tempfile/SQLite получал Access denied; те же тесты вне песочницы прошли. Это сбой окружения, код приложения ради него не меняли. Версии установленных библиотек записаны в README; исходные диапазоны requirements не менялись.
+| Actual command (executable paths below) | Exit | Actual short result |
+|---|---:|---|
+| `python scripts/check_plan.py` | 0 | 42 tasks / 17 requirements / 35 source groups |
+| `python scripts/check_coverage.py` | 0 | 10 tests, OK |
+| `python scripts/smoke.py` | 0 | ALL 14 SMOKE CHECKS PASSED |
+| `python scripts/test_audit_received_csv.py` | 0 | 8 tests, OK |
+| `node scripts/check_operator_ui.cjs http://127.0.0.1:53129` | 0 | ALL 11 OPERATOR UI CHECKS PASSED |
+| `node scripts/check_coverage_ui.cjs http://127.0.0.1:53129` | 0 | PASS UI 1–6, including keyboard assertions |
+| `git diff --check` | 0 | no whitespace errors |
 
-GitHub CI для implementation commit `5ceec95`: **success**, [test job](https://github.com/Eliasans02/pulse109/actions/runs/34498662422/job/102943543932) (Linux/Python 3.11; plan, smoke, coverage, synthetic audit). Браузерная проверка — локальная.
+Working directory: `C:/Users/oarka/Documents/Codex/2026-09-10/10-09-2026-18-10-your/work/pulse109-consolidation`. `python` resolved to `../pulse109/.venv/Scripts/python.exe`; `node` to `C:/Users/oarka/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node.exe`. Environment: `PYTHONUTF8=1`, `P109_BROWSER=msedge`, `NODE_PATH=C:/Users/oarka/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules`. Local logs/probe: parent workspace `work/consolidation-checks` and `work/queue_payload_probe.cjs`, outside Git.
 
-Повторный запуск адаптированного `scripts/audit_received_csv.py --source-dir <локальная папка> --output <путь вне папки CSV>`: **exit 0**, 8 complete, те же количества. Источник в этом сеансе: `C:/Users/oarka/OneDrive/Рабочий стол/Хакатон/GovTechCampPulse109`. Полный промежуточный отчёт остаётся вне Git.
+The server command was `python -m uvicorn app:app --host 127.0.0.1 --port 53129`, with DATABASE_PATH pointing at a unique temporary synthetic DB. Server and DB are now removed. To reproduce, use README's isolated setup, create a fresh synthetic DB, start that server, then run both node commands. The unchanged Linux CI also installs Playwright externally and runs both scripts; do not point QA at a real imported DB.
 
-Браузерная проверка (сначала сервер, отдельная synthetic БД):
-```powershell
-$env:DATABASE_PATH='C:/Users/oarka/Documents/Codex/2026-09-10/10-09-2026-18-10-your/work/coverage-ui-demo.db'
-& ../pulse109/.venv/Scripts/python.exe -m uvicorn app:app --host 127.0.0.1 --port 8765
-# В другой консоли; из корня репозитория:
-$env:NODE_PATH='C:/Users/oarka/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules'
-& 'C:/Users/oarka/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node.exe' scripts/check_coverage_ui.cjs http://127.0.0.1:8765
-```
-**Exit 0, 6 UI-сценариев:** loading, клавиатура/empty, Алматы city/region и поля, 503 + повреждённый JSON/повтор, поздний ответ, 7/13 фильтры и ширина 390px. Playwright 1.62.1 + установленный Edge; исполняемая browser-зависимость не добавлена в runtime. В первой версии QA-теста Enter открывал нативный select Edge; тест исправлен на End/Tab, повтор прошёл. Desktop screenshot просмотрен: читаемый, без гражданских записей. Независимое code review не нашло блокирующих новых дефектов; замечание о валидации даты источника исправлено и покрыто тестом.
+**Runner limitation:** all six test commands individually exited 0, but the initial task-local orchestration exited **1 during cleanup**: a Windows venv-launcher child retained the temporary SQLite file. The identified task-owned server/DB were cleaned; the helper's process-tree teardown was corrected outside Git and its setup/cleanup-only check exited 0. This was separate from application assertions; no application change or invented pass.
 
-## Исследование и интеграция
+Historical evidence: #43 implementation `5ceec95` had 14 smoke/10 coverage/8 audit and 6 local coverage UI passes. #44 implementation `24e6e21` had four operator tests RED on its base and GREEN after the fix; [its Linux run](https://github.com/Eliasans02/pulse109/actions/runs/34565794005) passed both UI suites. #45 expands operator checks to 11. The documented macOS/headless native-select End limitation remains a local failure, not a pass; unchanged assertions passed in Linux CI and this Windows/Edge review.
 
-В `docs/research.md`, раздел «Аналоги»: **8 продуктов / 3 репозитория**, проверка 10.09.2026. Ключевые первичные ссылки: [OneService FAQ](https://www.oneservice.gov.sg/oschatbot-faqs/), [SeeClickFix duplicate lifecycle](https://www.civicplus.help/seeclickfix/docs/mark-a-request-as-a-duplicate), [NYC единица service request](https://home4.nyc.gov/site/311reporting/311-reports/service-requests.page). Три паттерна: свидетельства рядом с выводом, подтверждённая связь с сохранением оригиналов, локальная/языковая оценка. Рабочие установки аналогов не тестировали; рекламные эффекты не выдаются за метрики.
+## Current product and data boundaries
 
-Проверенные кодовые базы: [FixMyStreet](https://github.com/mysociety/fixmystreet) и [Ushahidi backend](https://github.com/ushahidi/platform) — AGPL-3.0-or-later; [Mark-a-Spot](https://github.com/markaspot/mark-a-spot) — GPL-2.0-or-later. Pinned LICENSE/commit/release/зависимости приведены в research; для копирования понадобятся notices, проверка отдельных лицензий и соответствующие исходники, включая сетевое условие модифицированной AGPL-версии. Сейчас копирования нет. [E5 card](https://huggingface.co/intfloat/multilingual-e5-small): MIT, RU/KK заявлены, качество на 109 не измерено.
+- **Working:** inventory/matrix coverage, 7 supplied / 13 missing regions / 8 files; CSV-record counts explicitly separate from synthetic SQLite complaint counters; unknown period/language semantics/unique counts stay unavailable.
+- **Mock:** intake, keyword classification, topic-filter candidates, human confirmation/audit. No fine-tuned classifier/retriever or model-quality evidence. Twenty fixtures/selector entries do not establish national corpus coverage.
+- **Unavailable:** real ingestion/index, checked incident/repeat logic, alerts, forecasts, NL and genuine PDF/XLSX; module endpoints remain 501.
+- **Prior structural evidence, not reread now:** 1,036,858 parsed CSV records, zero parser errors; not unique complaints. Akmola request_subject 3475/3506 filled, median 24/p95 50 characters is a candidate only. Karaganda times unsupported; 32 Akmola dates unparsed. Rights, hosting, meanings, RU/KK, uniqueness and history completeness remain unverified.
+- **Humans decide:** Elias/Ilyas own data/sample rights, hosting, meanings, service-routing rules, dependency merges and final security sign-off. P109-03/P109-09/P109-26/P109-36 remain open. [data_contract_request.md](../planning/data_contract_request.md) is the exact P109-03 closure checklist; its dated header-only audit prose does not supersede later numeric inventory evidence.
 
-Изменения для Ильяса: новый endpoint и `data_coverage.py`, `static/coverage.js`, компонент в index/style; `local_profile` в inventory, новые scripts/CI и документы. **SQLite, intake/confirm и trained-model контракты не изменены.** При упаковке сервера включить оба `planning/data_*.json`; рассогласованные/отсутствующие файлы дадут 503. Даты проверки inventory не являются свежестью обращений. `record_count` — только CSV-записи, не использовать как готовый P109-25 aggregate. PR требует ревью Ильяса, merge не выполнен.
+## P109-03/P109-04 readiness verdict
 
-## Следующие три задачи
+No explicitly approved small sample, permitted volume/fields or use conditions were supplied in this task. Original-text share, RU/KK/mixed/unknown sample counts and leakage relationship are **not assessed / null**, not zero. Metadata cannot establish them. Semantic verification, ingestion and both training runs remain blocked on the human decision. Do not read organizer CSVs or reuse past full-file structural-audit permission as current sample approval.
 
-1. **Ильяс / независимый reviewer — проверить PR #43 и зависимый PR #44.** Сверить актуальные HEAD и CI, просмотреть минимальный diff, подтвердить отсутствие динамического HTML и работу Tab/Enter/Space. Оба UI-теста уже прошли в Linux CI для implementation commit; проверить статус финального HEAD. Не выполнять merge без отдельного решения Ильяса и не закрывать полностью P109-09/P109-26/P109-36.
-2. **Ильяс — P109-03/P109-04, локальная семантическая проверка.** Проверить с человеком смысл Akmola `request_subject` на небольшой разрешённой выборке; фиксировать долю исходных текстов, RU/KK/mixed/unknown, связь с метками/исходом и условия использования. Приёмка: только сводный вердикт о пригодности и конкретных ограничениях, без публикации примеров; затем решение о двух обучающих корпусах. Наличие 13 недостающих регионов не блокирует корректный пилот на пригодной части.
-3. **Нурали с Ольгой — QA покрытия, поддержка P109-26.** За 20–30 минут найти поставленный/отсутствующий регион, непроверенное поле и историю, отличить demo от CSV. Приёмка-цель: пять правильных ответов, записанные время/ошибки; не называть это ML-оценкой. Затем 12 синтетических пар для проверки формулировок связи по research.
+Elias/Ilyas need to identify the approved local sample, allowed amount/fields, reviewer, review location and retained aggregates. Citizen rows remain prohibited in prompts/logs/GitHub even after sample approval; a human confirms meanings and only approved summaries are returned. Sample approval alone does not close the checklist or authorize full ingestion/training. No organizer contact or approval was fabricated.
 
-## Первый запрос следующей модели
+## One next task and continuation prompt
 
-> Проведи независимое ревью Pulse 109: актуальная ветка fix/operator-text-keyboard поверх olga/data-coverage (PR #43). Проверь status/HEAD/CI, сохрани более новые правки. Прочитай AGENTS.md, docs/handoff.md, diff относительно базы, static/app.js, static/style.css, scripts/check_operator_ui.cjs и .github/workflows/ci.yml; остальные файлы только по необходимости. Проверь безопасный текстовый вывод, Tab/Enter/Space, сохранение фокуса и отсутствие автоматического подтверждения. Повтори проверки в подходящем окружении; отдельно отметь известное ограничение native select в macOS headless QA. Верни findings с файлами/строками или отсутствие находок с границами проверки. Не меняй код, не делай merge, не читай CSV и не повторяй research. После ревью следующая работа — локальная семантическая проверка P109-03/P109-04 с человеком, а не запуск обучения на неподтверждённом тексте.
+**Fix the P2 malformed-row failure before #45 merges (partial P109-09), while sample approval remains pending.** Use a new worktree/branch at the latest queue head and coordinate ownership. Files: app.js, synthetic operator tests, then handoff. Acceptance: malformed members or missing/non-string text give a generic failure, preserve prior rows/selection with a stale warning, recover on retry, and all original checks pass. No API/SQLite/routing/confirmation change or full P109-09/P109-36 closure.
+
+> Fetch current PR heads. Read AGENTS.md, this handoff's finding, P109-09 in planning/backlog.json, static/app.js, scripts/check_operator_ui.cjs and CI. In an owned worktree, add failing intercepted-response tests for complaints:[null] and invalid text, then minimally make queue rendering atomic and failure-aware. Keep known rows/selection with a stale warning; never auto-confirm. Run the seven listed checks with synthetic data/external Playwright, report actual exits, open a focused PR without merging, update this handoff. Preserve newer queue/layout work. Do not read organizer CSVs or start semantics without explicit Elias/Ilyas sample approval.
