@@ -6,6 +6,8 @@ Branch `review/stack-43-51`, base `deepseek/similar-member-validation` at `66b28
 
 Task contract recorded before edit: P109-09/26/36 review support; goal correct stack/CI/ownership and merge recipe; allowed file `docs/handoff.md`; inputs canonical docs, planning metadata, current PR metadata and diffs; acceptance exact nine heads/bases, source review, seven synthetic checks, next contract; dependencies human merge/security/sample decisions; evidence this document and documentation-only PR. No organizer CSV was read.
 
+Delivery: [PR #52](https://github.com/Eliasans02/pulse109/pull/52), review commit [4c71c57](https://github.com/Eliasans02/pulse109/commit/4c71c57c65541b2e99995e41776b2fe793aba397). The following documentation commit adds these links; use the PR current head for final CI.
+
 ## Exact stack snapshot
 
 Checked at 2026-09-11T08:36:38.141764+00:00 using fresh fetch and GitHub API. All nine open, unmerged, mergeable/clean; each check below matches the full head SHA. Submitted review lists were empty. MERGEABLE and green CI are not human approval. No Gemini/layout branch or PR was present on origin; local unpublished work remains unknown.
