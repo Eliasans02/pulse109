@@ -2,6 +2,7 @@ let activeComplaint = null;
 let cachedTopics = [];
 let cachedRegions = [];
 let queueRequestId = 0;
+let similarRequestId = 0;
 
 document.addEventListener("DOMContentLoaded", () => {
   initApp();
@@ -289,34 +290,42 @@ function renderProposal(proposal) {
 }
 
 async function loadSimilar(complaintId) {
+  const requestId = ++similarRequestId;
+  const container = document.getElementById("similar-list");
+  container.replaceChildren(textElement("p", "Загружаем похожие обращения…", "empty-state"));
+  let candidates;
   try {
     const res = await fetch(`/api/complaints/${complaintId}/similar?limit=5`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    const container = document.getElementById("similar-list");
-    container.innerHTML = "";
-    const candidates = data.candidates || [];
-    if (!candidates.length) {
-      container.innerHTML = '<p class="empty-state">Похожих обращений не найдено.</p>';
-      return;
-    }
-    candidates.forEach(cand => {
-      const div = document.createElement("div");
-      div.className = "similar-item";
-      const excerpt = document.createElement("div");
-      excerpt.append(textElement("strong", `[${cand.complaint_id}]`), ` ${cand.excerpt}`);
-      const metadata = textElement("div", `Статус: ${cand.decision_status} | Источник: ${cand.origin}`);
-      metadata.style.cssText = "color:#64748b;font-size:0.75rem;";
-      div.append(excerpt, metadata);
-      if (cand.resolution_text) {
-        const resolution = textElement("div", `Решение: ${cand.resolution_text}`);
-        resolution.style.color = "#059669";
-        div.appendChild(resolution);
-      }
-      container.appendChild(div);
-    });
+    if (!data || !Array.isArray(data.candidates)) throw new Error("Invalid similar response");
+    candidates = data.candidates;
   } catch (err) {
-    console.error("Failed to load similar complaints", err);
+    if (requestId !== similarRequestId) return;
+    container.replaceChildren(textElement("p", "Не удалось загрузить похожие обращения.", "empty-state"));
+    return;
   }
+  if (requestId !== similarRequestId) return;
+  if (!candidates.length) {
+    container.replaceChildren(textElement("p", "Похожих обращений не найдено.", "empty-state"));
+    return;
+  }
+  const items = candidates.map(cand => {
+    const div = document.createElement("div");
+    div.className = "similar-item";
+    const excerpt = document.createElement("div");
+    excerpt.append(textElement("strong", `[${cand.complaint_id}]`), ` ${cand.excerpt}`);
+    const metadata = textElement("div", `Статус: ${cand.decision_status} | Источник: ${cand.origin}`);
+    metadata.style.cssText = "color:#64748b;font-size:0.75rem;";
+    div.append(excerpt, metadata);
+    if (cand.resolution_text) {
+      const resolution = textElement("div", `Решение: ${cand.resolution_text}`);
+      resolution.style.color = "#059669";
+      div.appendChild(resolution);
+    }
+    return div;
+  });
+  container.replaceChildren(...items);
 }
 
 function handleTopicChange() {

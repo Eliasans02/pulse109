@@ -33,7 +33,7 @@ async function main() {
     page.setDefaultTimeout(4000);
     const errors = [];
     const writes = [];
-    const state = {complaints: options.complaints || {status: 200, json: {complaints}}, queueGets: []};
+    const state = {complaints: options.complaints || {status: 200, json: {complaints}}, similar: options.similar || {status: 200, json: {candidates: [candidate]}}, queueGets: []};
     page.on('pageerror', error => errors.push(error.name));
     await page.route('**/api/**', async route => {
       const request = route.request();
@@ -50,7 +50,12 @@ async function main() {
         if (config.delayMs) await new Promise(resolve => setTimeout(resolve, config.delayMs));
         if (config.raw !== undefined) return route.fulfill({status: config.status, contentType: 'application/json', body: config.raw});
         return route.fulfill({status: config.status, json: config.json});
-      } else if (path.endsWith('/similar')) json = {candidates: [candidate]};
+      } else if (path.endsWith('/similar')) {
+        const config = state.similar;
+        if (config.delayMs) await new Promise(resolve => setTimeout(resolve, config.delayMs));
+        if (config.raw !== undefined) return route.fulfill({status: config.status, contentType: 'application/json', body: config.raw});
+        return route.fulfill({status: config.status, json: config.json});
+      } else if (path.endsWith('/classify')) json = {proposal};
       else if (path.endsWith('/classify')) json = {proposal};
       else return route.fulfill({status: 503, json: {detail: {error: 'synthetic_test_unavailable'}}});
       return route.fulfill({json});
@@ -264,6 +269,34 @@ async function main() {
       assert.equal(await page.locator('#queue-list').getAttribute('aria-busy'), 'false');
       assert.doesNotMatch(await page.locator('#queue-status').textContent(), /[0-9]/);
     }, {complaints: {status: 200, json: {complaints: [null]}}, waitForItems: 0});
+
+    await check('late similar response for a previous selection cannot replace the current one', async (page, writes, state) => {
+      state.similar = {status: 200, delayMs: 800, json: {candidates: [{complaint_id: 'cand-a', excerpt: 'Кандидат A', decision_status: 'pending', origin: 'synthetic'}]}};
+      await page.locator('#queue-list .queue-item').first().click();
+      await page.waitForTimeout(100);
+      state.similar = {status: 200, json: {candidates: [{complaint_id: 'cand-b', excerpt: 'Кандидат B', decision_status: 'pending', origin: 'synthetic'}]}};
+      await page.locator('#queue-list .queue-item').nth(1).click();
+      await page.locator('#similar-list .similar-item').waitFor();
+      await page.waitForTimeout(1000);
+      const text = await page.locator('#similar-list').textContent();
+      assert.match(text, /Кандидат B/);
+      assert.doesNotMatch(text, /Кандидат A/);
+      assert.equal(await page.locator('#active-id').textContent(), 'synthetic-ui-1');
+      assert.deepEqual(writes, []);
+    });
+
+    await check('malformed similar response fails visibly, not with stale candidates', async (page, writes, state) => {
+      await page.locator('#queue-list .queue-item').first().click();
+      await page.locator('#similar-list .similar-item').waitFor();
+      state.similar = {status: 200, json: {candidates: 'not-an-array'}};
+      await page.locator('#queue-list .queue-item').nth(1).click();
+      await page.waitForFunction(() => document.getElementById('similar-list').textContent.includes('Не удалось'));
+      assert.equal(await page.locator('#similar-list .similar-item').count(), 0);
+      state.similar = {status: 200, json: {candidates: []}};
+      await page.locator('#queue-list .queue-item').nth(2).click();
+      await page.waitForFunction(() => document.getElementById('similar-list').textContent.includes('Похожих обращений не найдено'));
+      assert.deepEqual(writes, []);
+    });
   } finally {
     await browser.close();
   }
