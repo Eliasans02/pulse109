@@ -87,4 +87,3 @@ Operator lane received a bounded read-only contract review; **implementation is 
 
 First-task prompt:
 > Fetch current PR heads; read AGENTS.md, this handoff, P109-09/36 in backlog, static/app.js, static/index.html and scripts/check_operator_ui.cjs. Obtain the single index.html owner decision already requested. In a separate operator branch implement only the status/startup contract with synthetic failing tests first, split files when needed, preserve existing assertions, run seven checks, open a focused PR with actual exits and exact-head Linux CI. No organizer CSV, merge, routing change or full-task closure. Leave handoff updates to its coordinated owner.
-
