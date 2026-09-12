@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from data_coverage import CoverageUnavailable, load_coverage
 
 BANNER_TEXT = "SYNTHETIC DEMO — MODELS NOT TRAINED"
 
@@ -191,6 +192,19 @@ def get_regions():
 @app.get("/api/topics")
 def get_topics():
     return {"topics": TOPICS}
+
+
+@app.get("/api/data-coverage")
+def get_data_coverage(region_id: Optional[str] = None):
+    if region_id is not None and region_id not in VALID_REGION_IDS:
+        raise HTTPException(status_code=422, detail="Unknown region_id")
+    try:
+        data = load_coverage(Path(__file__).resolve().parent / "planning", REGIONS)
+    except CoverageUnavailable:
+        raise HTTPException(status_code=503, detail={"error": "coverage_unavailable"}) from None
+    if region_id is not None:
+        data["regions"] = [r for r in data["regions"] if r["region_id"] == region_id]
+    return data
 
 
 @app.get("/api/stats")

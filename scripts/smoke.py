@@ -16,6 +16,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from check_coverage import check_api
 
 
 def find_free_port() -> int:
@@ -221,8 +222,11 @@ def run_smoke():
         assert status == 422
         print("PASS 13f: GET /api/reports?format=csv rejected with 422 (unsupported format)")
 
+        check_api(base_url, http_request)
+        print("PASS 14: Coverage API separates metadata, missing regions and unknown counts; filters validated")
+
         print("\n========================================================")
-        print("ALL 13 SMOKE CHECKS PASSED SUCCESSFULLY!")
+        print("ALL 14 SMOKE CHECKS PASSED SUCCESSFULLY!")
         print("========================================================")
 
     finally:

@@ -25,14 +25,14 @@
     "full_export_audited": false,
     "note": "organizer_export_verified=false означает отсутствие полного содержательного аудита выгрузки, а не отсутствие доступа к ссылке. Все восемь Drive-заголовков совпали с соответствующими каталоговыми схемами; полные файлы не сравнивались. Размер первой части Павлодара отличается от публичного аналога: версии нельзя считать идентичными.",
     "files": [
-      {"region": "Акмолинская область", "file_id": "1IZMuu3TSKqVSRTh872zGbnzlnR7vB0rH", "size_bytes": 1098728},
-      {"region": "Алматинская область", "file_id": "10xsVo5SQx5faBactxookxJevzhziPd1G", "size_bytes": 6936634},
-      {"region": "Восточно-Казахстанская область", "file_id": "1zhaNNmuQ5f-y0Str0LzH4RoY19T8sY-W", "size_bytes": 25620765},
-      {"region": "Карагандинская область", "file_id": "1MlqIkbKlCPBkjdHAnvhb4lSPOzKjFLYX", "size_bytes": 63311584},
-      {"region": "Костанайская область", "file_id": "1ZZNEjeQHLfMXtWsD1-Op1RSc5C90Gfl0", "size_bytes": 11188196},
-      {"region": "Туркестанская область", "file_id": "16IoeM8yJ-eNxOYHdw8_Rmo0U0P_HY7Th", "size_bytes": 41102525},
-      {"region": "Павлодарская область", "part": 1, "file_id": "1pUBQBcPHQX05kxNQK0AKwfEmJvV96WIU", "size_bytes": 67732915},
-      {"region": "Павлодарская область", "part": 2, "file_id": "1iKrV-ZVy74v2-mxe4H7jwp9sEjTg6drV", "size_bytes": 67709557}
+      {"region": "Акмолинская область", "file_id": "1IZMuu3TSKqVSRTh872zGbnzlnR7vB0rH", "size_bytes": 1098728, "local_profile": {"parsed_data_records": 3506, "complete_record_count_verified": true, "header_matches_inventory": true, "size_bytes": 1098728, "checked_at_utc": "2026-09-10T15:37:22.747328+00:00"}},
+      {"region": "Алматинская область", "file_id": "10xsVo5SQx5faBactxookxJevzhziPd1G", "size_bytes": 6936634, "local_profile": {"parsed_data_records": 19912, "complete_record_count_verified": true, "header_matches_inventory": true, "size_bytes": 6936634, "checked_at_utc": "2026-09-10T15:37:22.747328+00:00"}},
+      {"region": "Восточно-Казахстанская область", "file_id": "1zhaNNmuQ5f-y0Str0LzH4RoY19T8sY-W", "size_bytes": 25620765, "local_profile": {"parsed_data_records": 83385, "complete_record_count_verified": true, "header_matches_inventory": true, "size_bytes": 25620765, "checked_at_utc": "2026-09-10T15:37:22.747328+00:00"}},
+      {"region": "Карагандинская область", "file_id": "1MlqIkbKlCPBkjdHAnvhb4lSPOzKjFLYX", "size_bytes": 63311584, "local_profile": {"parsed_data_records": 143954, "complete_record_count_verified": true, "header_matches_inventory": true, "size_bytes": 63311584, "checked_at_utc": "2026-09-10T15:37:22.747328+00:00"}},
+      {"region": "Костанайская область", "file_id": "1ZZNEjeQHLfMXtWsD1-Op1RSc5C90Gfl0", "size_bytes": 11188196, "local_profile": {"parsed_data_records": 20591, "complete_record_count_verified": true, "header_matches_inventory": true, "size_bytes": 11188196, "checked_at_utc": "2026-09-10T15:37:22.747328+00:00"}},
+      {"region": "Туркестанская область", "file_id": "16IoeM8yJ-eNxOYHdw8_Rmo0U0P_HY7Th", "size_bytes": 41102525, "local_profile": {"parsed_data_records": 98876, "complete_record_count_verified": true, "header_matches_inventory": true, "size_bytes": 41102525, "checked_at_utc": "2026-09-10T15:37:22.747328+00:00"}},
+      {"region": "Павлодарская область", "part": 1, "file_id": "1pUBQBcPHQX05kxNQK0AKwfEmJvV96WIU", "size_bytes": 67732915, "local_profile": {"parsed_data_records": 333317, "complete_record_count_verified": true, "header_matches_inventory": true, "size_bytes": 67732915, "checked_at_utc": "2026-09-10T15:37:22.747328+00:00"}},
+      {"region": "Павлодарская область", "part": 2, "file_id": "1iKrV-ZVy74v2-mxe4H7jwp9sEjTg6drV", "size_bytes": 67709557, "local_profile": {"parsed_data_records": 333317, "complete_record_count_verified": true, "header_matches_inventory": true, "size_bytes": 67709557, "checked_at_utc": "2026-09-10T15:37:22.747328+00:00"}}
     ],
     "download_url_template": "https://drive.google.com/uc?export=download&id={file_id}"
   },
@@ -77,7 +77,8 @@
     "raw_rows_included": false,
     "languages_verified": false,
     "history_verified": false,
-    "row_counts_verified": false,
+    "row_counts_verified": true,
+    "row_count_scope": "Локально подсчитаны CSV-записи, не уникальные обращения. scripts/audit_received_csv.py; размеры/заголовки совпали, полная идентичность Drive не проверена.",
     "all_twenty_regions_verified": false
   },
   "license_evidence": {

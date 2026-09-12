@@ -1,6 +1,10 @@
 let activeComplaint = null;
 let cachedTopics = [];
 let cachedRegions = [];
+let queueRequestId = 0;
+let similarRequestId = 0;
+let classifyRequestId = 0;
+let selectionGeneration = 0;
 
 document.addEventListener("DOMContentLoaded", () => {
   initApp();
@@ -20,6 +24,7 @@ function setupEventListeners() {
   });
 
   document.getElementById("intake-form").addEventListener("submit", handleIntakeSubmit);
+  document.getElementById("queue-refresh").addEventListener("click", loadQueue);
   document.getElementById("btn-classify").addEventListener("click", handleClassify);
   document.getElementById("confirm-form").addEventListener("submit", handleConfirmSubmit);
   document.getElementById("confirm-topic").addEventListener("change", handleTopicChange);
@@ -87,7 +92,7 @@ async function loadStats() {
       const row = document.createElement("div");
       row.className = "breakdown-row";
       const name = topicMap[topicId] || topicId;
-      row.innerHTML = `<span>${name}</span><strong>${count}</strong>`;
+      row.append(textElement("span", name), textElement("strong", count));
       breakdown.appendChild(row);
     }
   } catch (err) {
@@ -96,37 +101,70 @@ async function loadStats() {
 }
 
 async function loadQueue() {
+  const requestId = ++queueRequestId;
+  const list = document.getElementById("queue-list");
+  const status = document.getElementById("queue-status");
+  const errorBox = document.getElementById("queue-error");
+  list.setAttribute("aria-busy", "true");
+  status.textContent = "Загружаем очередь…";
+  errorBox.hidden = true;
+
+  let rows;
   try {
     const res = await fetch("/api/complaints?limit=30");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    const list = document.getElementById("queue-list");
-    list.innerHTML = "";
-    const complaints = data.complaints || [];
-    if (!complaints.length) {
-      list.innerHTML = '<li class="empty-state">Очередь пуста</li>';
-      return;
-    }
-    complaints.forEach(c => {
+    if (!data || !Array.isArray(data.complaints)) throw new Error("Invalid queue response");
+    rows = data.complaints.map(c => {
+      if (!c || typeof c.id !== "string" || typeof c.text !== "string") throw new Error("Invalid queue response");
       const item = document.createElement("li");
-      item.className = "queue-item";
-      if (activeComplaint && activeComplaint.id === c.id) {
-        item.classList.add("selected");
-      }
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "queue-item";
+      button.dataset.complaintId = c.id;
+      const selected = activeComplaint?.id === c.id;
+      button.classList.toggle("selected", selected);
+      button.setAttribute("aria-pressed", String(selected));
       const badgeClass = c.decision_status === "confirmed" ? "badge-confirmed" : "badge-pending";
       const shortText = c.text.length > 55 ? c.text.substring(0, 55) + "..." : c.text;
-      item.innerHTML = `
-        <span title="${c.text}">${shortText}</span>
-        <span class="badge ${badgeClass}">${c.decision_status}</span>
-      `;
-      item.addEventListener("click", () => selectComplaint(c));
-      list.appendChild(item);
+      const preview = textElement("span", shortText);
+      preview.title = c.text;
+      button.append(preview, textElement("span", c.decision_status, `badge ${badgeClass}`));
+      button.addEventListener("click", () => selectComplaint(c));
+      item.appendChild(button);
+      return item;
     });
   } catch (err) {
-    console.error("Failed to load queue", err);
+    if (requestId !== queueRequestId) return;
+    list.setAttribute("aria-busy", "false");
+    const hasRows = list.querySelector("button") !== null;
+    if (hasRows) {
+      list.dataset.stale = "true";
+    } else {
+      delete list.dataset.stale;
+      list.replaceChildren();
+    }
+    errorBox.textContent = hasRows
+      ? "Не удалось обновить очередь. Показанные данные могли устареть."
+      : "Не удалось загрузить очередь. Повторите попытку.";
+    errorBox.hidden = false;
+    status.textContent = "";
+    return;
   }
+  if (requestId !== queueRequestId) return;
+  list.setAttribute("aria-busy", "false");
+  delete list.dataset.stale;
+  if (!rows.length) {
+    list.replaceChildren(textElement("li", "Очередь пуста", "empty-state"));
+    status.textContent = "Очередь пуста.";
+    return;
+  }
+  list.replaceChildren(...rows);
+  status.textContent = `Показано обращений: ${rows.length}`;
 }
 
 function selectComplaint(c) {
+  selectionGeneration += 1;
   activeComplaint = c;
   document.getElementById("active-id").textContent = c.id;
   document.getElementById("active-text").textContent = c.text;
@@ -159,7 +197,11 @@ function selectComplaint(c) {
     document.getElementById("proposal-content").innerHTML = '<p class="empty-state">Нажмите «Запросить предложение» для анализа текста.</p>';
   }
   loadSimilar(c.id);
-  loadQueue();
+  document.querySelectorAll("#queue-list button").forEach(button => {
+    const selected = button.dataset.complaintId === c.id;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
 }
 
 async function handleIntakeSubmit(e) {
@@ -197,9 +239,16 @@ async function handleIntakeSubmit(e) {
     await loadStats();
     await loadQueue();
     // Fetch full complaint and select
-    const fullRes = await fetch(`/api/complaints/${created.id}`);
-    const fullData = await fullRes.json();
-    selectComplaint(fullData.complaint);
+    try {
+      const fullRes = await fetch(`/api/complaints/${created.id}`);
+      if (!fullRes.ok) throw new Error(`HTTP ${fullRes.status}`);
+      const fullData = await fullRes.json();
+      if (!fullData || !fullData.complaint || typeof fullData.complaint.id !== "string") throw new Error("Invalid complaint response");
+      selectComplaint(fullData.complaint);
+    } catch (followErr) {
+      console.error("Failed to load the created complaint", followErr);
+      showError(errorBox, "Обращение зарегистрировано, но автоматический выбор не удался. Найдите его в очереди.");
+    }
   } catch (err) {
     showError(errorBox, "Сетевая ошибка при отправке обращения");
   }
@@ -207,27 +256,37 @@ async function handleIntakeSubmit(e) {
 
 async function handleClassify() {
   if (!activeComplaint) return;
+  const complaint = activeComplaint;
+  const requestId = ++classifyRequestId;
+  const generation = selectionGeneration;
   const btn = document.getElementById("btn-classify");
   btn.disabled = true;
+  let proposal;
   try {
-    const res = await fetch(`/api/complaints/${activeComplaint.id}/classify`, { method: "POST" });
+    const res = await fetch(`/api/complaints/${complaint.id}/classify`, { method: "POST" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    renderProposal(data.proposal);
-    if (data.proposal.topic) {
-      document.getElementById("confirm-topic").value = data.proposal.topic;
-    }
-    if (data.proposal.service_id) {
-      document.getElementById("confirm-service").value = data.proposal.service_id;
-    }
-    if (data.proposal.priority) {
-      document.getElementById("confirm-priority").value = data.proposal.priority;
-    }
-    await loadSimilar(activeComplaint.id);
+    if (!data || !data.proposal || typeof data.proposal !== "object" || Array.isArray(data.proposal)) throw new Error("Invalid classification response");
+    proposal = data.proposal;
   } catch (err) {
     console.error("Classification error", err);
+    return;
   } finally {
-    btn.disabled = false;
+    if (requestId === classifyRequestId) btn.disabled = false;
   }
+  if (requestId !== classifyRequestId) return;
+  if (selectionGeneration !== generation) return;
+  renderProposal(proposal);
+  if (proposal.topic) {
+    document.getElementById("confirm-topic").value = proposal.topic;
+  }
+  if (proposal.service_id) {
+    document.getElementById("confirm-service").value = proposal.service_id;
+  }
+  if (proposal.priority) {
+    document.getElementById("confirm-priority").value = proposal.priority;
+  }
+  loadSimilar(complaint.id);
 }
 
 function renderProposal(proposal) {
@@ -241,37 +300,54 @@ function renderProposal(proposal) {
   }
   const tObj = cachedTopics.find(t => t.id === proposal.topic);
   const topicName = tObj ? tObj.name_ru : proposal.topic;
-  container.innerHTML = `
-    <div>Предлагаемая тема: <span class="proposal-pill">${topicName}</span></div>
-    <div style="font-size:0.85rem;margin-top:0.3rem;">Служба: <strong>${proposal.service_id || "—"}</strong> | Приоритет: <strong>${proposal.priority}</strong></div>
-  `;
+  const topic = textElement("div", "Предлагаемая тема: ");
+  topic.appendChild(textElement("span", topicName, "proposal-pill"));
+  const details = textElement("div", "Служба: ");
+  details.style.cssText = "font-size:0.85rem;margin-top:0.3rem;";
+  details.append(textElement("strong", proposal.service_id || "—"), " | Приоритет: ",
+    textElement("strong", proposal.priority));
+  container.replaceChildren(topic, details);
 }
 
 async function loadSimilar(complaintId) {
+  const requestId = ++similarRequestId;
+  const container = document.getElementById("similar-list");
+  container.replaceChildren(textElement("p", "Загружаем похожие обращения…", "empty-state"));
+  let items;
   try {
     const res = await fetch(`/api/complaints/${complaintId}/similar?limit=5`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    const container = document.getElementById("similar-list");
-    container.innerHTML = "";
-    const candidates = data.candidates || [];
-    if (!candidates.length) {
-      container.innerHTML = '<p class="empty-state">Похожих обращений не найдено.</p>';
-      return;
-    }
-    candidates.forEach(cand => {
+    if (!data || !Array.isArray(data.candidates)) throw new Error("Invalid similar response");
+    items = data.candidates.map(cand => {
+      if (!cand || typeof cand.complaint_id !== "string" || typeof cand.excerpt !== "string") throw new Error("Invalid similar response");
       const div = document.createElement("div");
       div.className = "similar-item";
-      const resText = cand.resolution_text ? `<div style="color:#059669;">Решение: ${cand.resolution_text}</div>` : "";
-      div.innerHTML = `
-        <div><strong>[${cand.complaint_id}]</strong> ${cand.excerpt}</div>
-        <div style="color:#64748b;font-size:0.75rem;">Статус: ${cand.decision_status} | Источник: ${cand.origin}</div>
-        ${resText}
-      `;
-      container.appendChild(div);
+      const excerpt = document.createElement("div");
+      excerpt.append(textElement("strong", `[${cand.complaint_id}]`), ` ${cand.excerpt}`);
+      const statusText = typeof cand.decision_status === "string" ? cand.decision_status : "—";
+      const originText = typeof cand.origin === "string" ? cand.origin : "—";
+      const metadata = textElement("div", `Статус: ${statusText} | Источник: ${originText}`);
+      metadata.style.cssText = "color:#64748b;font-size:0.75rem;";
+      div.append(excerpt, metadata);
+      if (cand.resolution_text) {
+        const resolution = textElement("div", `Решение: ${cand.resolution_text}`);
+        resolution.style.color = "#059669";
+        div.appendChild(resolution);
+      }
+      return div;
     });
   } catch (err) {
-    console.error("Failed to load similar complaints", err);
+    if (requestId !== similarRequestId) return;
+    container.replaceChildren(textElement("p", "Не удалось загрузить похожие обращения.", "empty-state"));
+    return;
   }
+  if (requestId !== similarRequestId) return;
+  if (!items.length) {
+    container.replaceChildren(textElement("p", "Похожих обращений не найдено.", "empty-state"));
+    return;
+  }
+  container.replaceChildren(...items);
 }
 
 function handleTopicChange() {
@@ -285,6 +361,8 @@ function handleTopicChange() {
 async function handleConfirmSubmit(e) {
   e.preventDefault();
   if (!activeComplaint) return;
+  const complaint = activeComplaint;
+  const generation = selectionGeneration;
   const errBox = document.getElementById("confirm-error");
   const succBox = document.getElementById("confirm-success");
   errBox.style.display = "none";
@@ -298,7 +376,7 @@ async function handleConfirmSubmit(e) {
   if (!service_id) { showError(errBox, "Укажите ответственную службу"); return; }
 
   try {
-    const res = await fetch(`/api/complaints/${activeComplaint.id}/confirm`, {
+    const res = await fetch(`/api/complaints/${complaint.id}/confirm`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ topic, service_id, priority, actor: "operator_demo" }),
@@ -309,14 +387,27 @@ async function handleConfirmSubmit(e) {
       return;
     }
     const data = await res.json();
+    if (!data || !data.complaint || typeof data.complaint !== "object" || typeof data.complaint.id !== "string") {
+      showError(errBox, "Получен некорректный ответ сервера. Повторите попытку.");
+      return;
+    }
+    if (selectionGeneration === generation) {
+      selectComplaint(data.complaint);
+    }
     succBox.textContent = `Решение для обращения ${data.complaint.id} успешно подтверждено!`;
     succBox.style.display = "block";
-    selectComplaint(data.complaint);
     await loadStats();
     await loadQueue();
   } catch (err) {
     showError(errBox, "Сетевая ошибка подтверждения");
   }
+}
+
+function textElement(tag, text, className = "") {
+  const element = document.createElement(tag);
+  element.textContent = text;
+  element.className = className;
+  return element;
 }
 
 function showError(box, msg) {

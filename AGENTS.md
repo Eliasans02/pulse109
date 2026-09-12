@@ -2,6 +2,8 @@
 
 ## Current state and objective
 
+- Latest bounded delivery and exact next task: read `docs/handoff.md` first. It supersedes dated baseline status below, not the architecture or privacy contracts.
+
 - The team has switched from the hospital case to Pulse 109.
 - As of 2026-09-10, the synthetic skeleton (issue P109-09) is implemented (`app.py`, `fixtures/demo.json`, `static/*`, `scripts/smoke.py`). Models are not yet trained.
 - Build a compact skeleton first; do not repeat the completed research.
@@ -28,7 +30,7 @@
 
 - Primary organizer folder: https://drive.google.com/drive/folders/1rOKRZeEvpJlBkNeWKoIVzq8Lq3zeVi1B
 - Its root and Pavlodar subfolder list 8 CSVs representing only 7 regions.
-- All 8 organizer CSV headers were read directly; no full content audit yet.
+- All 8 organizer CSV headers were read directly. A 2026-09-10 local structural pass counted 1,036,858 CSV records, with zero blank/width/parser errors; sizes/headers match inventory, full Drive identity and unique complaints remain unverified. Numeric evidence is in inventory `local_profile`; repeat with `scripts/audit_received_csv.py`.
 - One public catalog search found 12 matching cards representing the same 7 regions.
 - Headers match the public schemas; complete file identity is NOT established.
 - Most inspected schemas lack an explicit original complaint-text column.
@@ -37,7 +39,7 @@
   intake text without a verified source definition; outcomes are leakage risks.
 - Never reconstruct citizen text from category labels and call it real data.
 - Do not use outcomes or assigned services as intake-classifier input features.
-- RU/KK coverage, history, row counts, and the official 20-region export are unverified.
+- RU/KK coverage, history completeness, unique complaint counts, and the official 20-region export are unverified. Local parsed-record counts do not resolve those gates.
 - Some schemas expose names, applicant numbers, streets, or coordinates.
 - Public metadata/license labels do not establish permission to publish these rows.
 - Keep real citizen records out of GitHub, CI, prompts, logs, screenshots, and demos.
