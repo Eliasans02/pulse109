@@ -498,6 +498,54 @@ async function main() {
       assert.doesNotMatch(text, /null/);
       assert.deepEqual(writes, []);
     });
+
+    await check('confirm is single-submit and restores after failure', async (page, writes, state) => {
+      await page.locator('#queue-list .queue-item').first().click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
+      await page.locator('#confirm-topic').selectOption('test_topic');
+      await page.locator('#confirm-service').fill('srv-test');
+      state.confirm = {status: 500, delayMs: 600, json: {detail: 'synthetic_failure'}};
+      await page.locator('#btn-confirm').click();
+      assert.equal(await page.locator('#btn-confirm').isEnabled(), false, 'Confirm must be disabled while in flight');
+      await page.locator('#confirm-service').press('Enter');
+      await page.locator('#btn-confirm').click({force: true}).catch(() => {});
+      await page.waitForFunction(() => document.getElementById('confirm-error').textContent.includes('synthetic_failure'));
+      assert.equal(await page.locator('#btn-confirm').isEnabled(), true, 'Confirm must be restored after failure');
+      assert.equal(await page.locator('#confirm-topic').inputValue(), 'test_topic', 'Entered topic must survive failure');
+      assert.equal(await page.locator('#confirm-service').inputValue(), 'srv-test', 'Entered service must survive failure');
+      assert.deepEqual(writes, ['/api/complaints/synthetic-ui-0/confirm'], 'Exactly one confirm POST may fire');
+    });
+
+    await check('intake is single-submit and restores after failure', async (page, writes, state) => {
+      await page.locator('#intake-region').selectOption('KZ-AST');
+      await page.locator('#intake-text').fill('Синтетическое обращение');
+      state.intake = {status: 500, delayMs: 600, json: {detail: 'synthetic_failure'}};
+      await page.locator('#btn-submit-intake').click();
+      assert.equal(await page.locator('#btn-submit-intake').isEnabled(), false, 'Intake must be disabled while in flight');
+      await page.locator('#btn-submit-intake').click({force: true}).catch(() => {});
+      await page.waitForFunction(() => document.getElementById('intake-error').textContent.includes('synthetic_failure'));
+      assert.equal(await page.locator('#btn-submit-intake').isEnabled(), true, 'Intake must be restored after failure');
+      assert.equal(await page.locator('#intake-region').inputValue(), 'KZ-AST', 'Entered region must survive failure');
+      assert.equal(await page.locator('#intake-text').inputValue(), 'Синтетическое обращение', 'Entered text must survive failure');
+      assert.deepEqual(writes, ['/api/intake'], 'Exactly one intake POST may fire');
+    });
+
+    await check('failed classification shows a visible error and allows retry', async (page, writes, state) => {
+      await page.locator('#queue-list .queue-item').first().click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
+      state.classify = {status: 500, json: {detail: 'synthetic_failure'}};
+      await page.locator('#btn-classify').click();
+      const proposalError = page.locator('#proposal-error');
+      await proposalError.waitFor({state: 'visible'});
+      assert.equal(await proposalError.textContent(), 'Не удалось запросить предложение. Повторите попытку.');
+      assert.equal(await page.locator('#btn-classify').isEnabled(), true, 'Classify must be restored after failure');
+      state.classify = {status: 200, json: {proposal: {topic: 'test_topic', service_id: 'srv-retry', priority: 'normal'}}};
+      await page.locator('#btn-classify').click();
+      await page.locator('#proposal-content .proposal-pill').waitFor();
+      assert.equal(await proposalError.isVisible(), false, 'Error must clear on successful retry');
+      assert.equal(await page.locator('#confirm-service').inputValue(), 'srv-retry');
+      assert.deepEqual(writes, ['/api/complaints/synthetic-ui-0/classify', '/api/complaints/synthetic-ui-0/classify']);
+    });
   } finally {
     await browser.close();
   }

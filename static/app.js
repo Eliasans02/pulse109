@@ -4,6 +4,7 @@ let cachedRegions = [];
 let queueRequestId = 0;
 let similarRequestId = 0;
 let classifyRequestId = 0;
+let confirmRequestId = 0;
 let selectionGeneration = 0;
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -207,6 +208,8 @@ function selectComplaint(c) {
 async function handleIntakeSubmit(e) {
   e.preventDefault();
   const errorBox = document.getElementById("intake-error");
+  const btn = document.getElementById("btn-submit-intake");
+  if (btn.disabled) return;
   errorBox.style.display = "none";
 
   const region = document.getElementById("intake-region").value;
@@ -222,6 +225,7 @@ async function handleIntakeSubmit(e) {
     return;
   }
 
+  btn.disabled = true;
   try {
     const res = await fetch("/api/intake", {
       method: "POST",
@@ -251,6 +255,8 @@ async function handleIntakeSubmit(e) {
     }
   } catch (err) {
     showError(errorBox, "Сетевая ошибка при отправке обращения");
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -260,6 +266,8 @@ async function handleClassify() {
   const requestId = ++classifyRequestId;
   const generation = selectionGeneration;
   const btn = document.getElementById("btn-classify");
+  const errorBox = document.getElementById("proposal-error");
+  errorBox.hidden = true;
   btn.disabled = true;
   let proposal;
   try {
@@ -270,6 +278,9 @@ async function handleClassify() {
     proposal = data.proposal;
   } catch (err) {
     console.error("Classification error", err);
+    if (requestId === classifyRequestId && selectionGeneration === generation) {
+      errorBox.hidden = false;
+    }
     return;
   } finally {
     if (requestId === classifyRequestId) btn.disabled = false;
@@ -361,6 +372,8 @@ function handleTopicChange() {
 async function handleConfirmSubmit(e) {
   e.preventDefault();
   if (!activeComplaint) return;
+  const btn = document.getElementById("btn-confirm");
+  if (btn.disabled) return;
   const complaint = activeComplaint;
   const generation = selectionGeneration;
   const errBox = document.getElementById("confirm-error");
@@ -375,6 +388,8 @@ async function handleConfirmSubmit(e) {
   if (!topic) { showError(errBox, "Выберите тему"); return; }
   if (!service_id) { showError(errBox, "Укажите ответственную службу"); return; }
 
+  const requestId = ++confirmRequestId;
+  btn.disabled = true;
   try {
     const res = await fetch(`/api/complaints/${complaint.id}/confirm`, {
       method: "POST",
@@ -400,6 +415,8 @@ async function handleConfirmSubmit(e) {
     await loadQueue();
   } catch (err) {
     showError(errBox, "Сетевая ошибка подтверждения");
+  } finally {
+    if (requestId === confirmRequestId) btn.disabled = false;
   }
 }
 
