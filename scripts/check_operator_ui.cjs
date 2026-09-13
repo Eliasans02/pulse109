@@ -13,6 +13,11 @@ const candidate = {
 };
 const proposal = {topic: 'test_topic', service_id: html, priority: html};
 const confirmedComplaint = {...complaints[0], decision_status: 'confirmed', topic: 'test_topic', service_id: 'srv-test', priority: 'normal'};
+const queueEnvelope = (items, extra = {}) => ({
+  items, page: 1, pages: 1, total: items.length,
+  view_counts: {pending: items.length, clarification: 0, confirmed: 0, all: items.length},
+  ...extra,
+});
 
 async function clickRefreshAndSettle(page, state) {
   const before = state.queueGets.length;
@@ -34,7 +39,7 @@ async function main() {
     page.setDefaultTimeout(4000);
     const errors = [];
     const writes = [];
-    const state = {complaints: options.complaints || {status: 200, json: {complaints}}, complaint: options.complaint || {status: 200, json: {complaint: complaints[0]}}, intake: options.intake || {status: 200, json: {id: 'cmp-new'}}, similar: options.similar || {status: 200, json: {candidates: [candidate]}}, classify: options.classify || {status: 200, json: {proposal}}, confirm: options.confirm || {status: 200, json: {complaint: confirmedComplaint}}, queueGets: [], queueUrls: []};
+    const state = {complaints: options.complaints || {status: 200, json: queueEnvelope(complaints)}, complaint: options.complaint || {status: 200, json: {complaint: complaints[0]}}, intake: options.intake || {status: 200, json: {id: 'cmp-new'}}, similar: options.similar || {status: 200, json: {candidates: [candidate]}}, classify: options.classify || {status: 200, json: {proposal}}, confirm: options.confirm || {status: 200, json: {complaint: confirmedComplaint}}, queueGets: [], queueUrls: []};
     page.on('pageerror', error => errors.push(error.name));
     await page.route('**/api/**', async route => {
       const request = route.request();
@@ -171,15 +176,15 @@ async function main() {
       assert.equal(await page.locator('#queue-list').getAttribute('aria-busy'), 'false');
       assert.equal(await status.textContent(), 'Показано обращений: 3');
       assert.equal(await page.locator('#queue-error').isVisible(), false);
-    }, {complaints: {status: 200, delayMs: 1200, json: {complaints}}, waitForItems: 0});
+    }, {complaints: {status: 200, delayMs: 1200, json: queueEnvelope(complaints)}, waitForItems: 0});
 
     await check('only the latest overlapping refresh may render', async (page, writes, state) => {
       const stale = {...complaints[0], id: 'synthetic-ui-stale', text: 'Ответ первого запроса'};
       const fresh = {...complaints[1], id: 'synthetic-ui-fresh', text: 'Ответ второго запроса'};
-      state.complaints = {status: 200, delayMs: 800, json: {complaints: [stale]}};
+      state.complaints = {status: 200, delayMs: 800, json: queueEnvelope([stale])};
       await page.locator('#queue-refresh').click();
       await page.waitForTimeout(100);
-      state.complaints = {status: 200, json: {complaints: [fresh]}};
+      state.complaints = {status: 200, json: queueEnvelope([fresh])};
       await page.locator('#queue-refresh').click();
       await page.waitForFunction(() => {
         const first = document.querySelector('#queue-list .queue-item');
@@ -207,7 +212,7 @@ async function main() {
       await errorBox.waitFor({state: 'visible'});
       assert.match(await errorBox.textContent(), /Не удалось/);
       assert.equal(await page.locator('#queue-list .empty-state').count(), 0);
-      state.complaints = {status: 200, json: {complaints: 'not-an-array'}};
+      state.complaints = {status: 200, json: {items: 'not-an-array'}};
       await clickRefreshAndSettle(page, state);
       assert.equal(await page.locator('#queue-list .empty-state').count(), 0);
       assert.match(await errorBox.textContent(), /Не удалось/);
@@ -217,7 +222,7 @@ async function main() {
       assert.equal(await errorBox.isVisible(), true);
       assert.equal(await page.locator('#queue-list .queue-item').count(), 0);
       assert.deepEqual(writes, []);
-    }, {complaints: {status: 200, raw: '{"complaints": ['}, waitForItems: 0});
+    }, {complaints: {status: 200, raw: '{"items": ['}, waitForItems: 0});
 
     await check('empty queue is only a successful empty list', async page => {
       const empty = page.locator('#queue-list .empty-state');
@@ -228,7 +233,7 @@ async function main() {
       assert.equal(await page.locator('#queue-list').getAttribute('aria-busy'), 'false');
       assert.match(await page.locator('#queue-status').textContent(), /Очередь пуста/);
       assert.equal(await page.locator('#queue-refresh').isEnabled(), true);
-    }, {complaints: {status: 200, json: {complaints: []}}, waitForItems: 0});
+    }, {complaints: {status: 200, json: queueEnvelope([])}, waitForItems: 0});
 
     await check('failed refresh keeps rows but marks them stale and leaves selection untouched', async (page, writes, state) => {
       await page.locator('#queue-list .queue-item').first().click();
@@ -250,7 +255,7 @@ async function main() {
       const errorBox = page.locator('#queue-error');
       await errorBox.waitFor({state: 'visible'});
       assert.match(await errorBox.textContent(), /Не удалось загрузить очередь/);
-      state.complaints = {status: 200, json: {complaints}};
+      state.complaints = {status: 200, json: queueEnvelope(complaints)};
       const refresh = page.locator('#queue-refresh');
       await refresh.focus();
       assert.equal(await refresh.evaluate(el => el === document.activeElement), true);
@@ -267,7 +272,7 @@ async function main() {
       await page.locator('#queue-list .queue-item').first().click();
       await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
       const topicBefore = await page.locator('#confirm-topic').inputValue();
-      state.complaints = {status: 200, json: {complaints: [null]}};
+      state.complaints = {status: 200, json: queueEnvelope([null])};
       await clickRefreshAndSettle(page, state);
       const errorBox = page.locator('#queue-error');
       assert.equal(await errorBox.isVisible(), true);
@@ -276,11 +281,11 @@ async function main() {
       assert.equal(await page.locator('#queue-list .queue-item').count(), 3);
       assert.equal(await page.locator('#active-id').textContent(), 'synthetic-ui-0');
       assert.equal(await page.locator('#confirm-topic').inputValue(), topicBefore);
-      state.complaints = {status: 200, json: {complaints: [{id: 'synthetic-ui-x'}]}};
+      state.complaints = {status: 200, json: queueEnvelope([{id: 'synthetic-ui-x'}])};
       await clickRefreshAndSettle(page, state);
       assert.equal(await errorBox.isVisible(), true);
       assert.equal(await page.locator('#queue-list .queue-item').count(), 3);
-      state.complaints = {status: 200, json: {complaints}};
+      state.complaints = {status: 200, json: queueEnvelope(complaints)};
       await clickRefreshAndSettle(page, state);
       assert.equal(await errorBox.isVisible(), false);
       assert.equal(await page.locator('#queue-list').getAttribute('data-stale'), null);
@@ -296,7 +301,7 @@ async function main() {
       assert.equal(await page.locator('#queue-list .queue-item').count(), 0);
       assert.equal(await page.locator('#queue-list').getAttribute('aria-busy'), 'false');
       assert.doesNotMatch(await page.locator('#queue-status').textContent(), /[0-9]/);
-    }, {complaints: {status: 200, json: {complaints: [null]}}, waitForItems: 0});
+    }, {complaints: {status: 200, json: queueEnvelope([null])}, waitForItems: 0});
 
     await check('late similar response for a previous selection cannot replace the current one', async (page, writes, state) => {
       state.similar = {status: 200, delayMs: 800, json: {candidates: [{complaint_id: 'cand-a', excerpt: 'Кандидат A', decision_status: 'pending', origin: 'synthetic'}]}};

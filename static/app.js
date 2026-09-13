@@ -212,7 +212,7 @@ async function loadQueue() {
     const res = await fetch(queueRequestUrl());
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    const items = Array.isArray(data?.items) ? data.items : (Array.isArray(data?.complaints) ? data.complaints : null);
+    const items = Array.isArray(data?.items) ? data.items : null;
     if (!items) throw new Error("Invalid queue response");
     const rows = items.map(c => {
       if (!c || typeof c.id !== "string" || typeof c.text !== "string") throw new Error("Invalid queue response");
