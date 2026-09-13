@@ -22,6 +22,10 @@ jobs:
         run: python scripts/check_plan.py
       - name: Run smoke checks
         run: python scripts/smoke.py
+      - name: Run clarification and priority semantics checks
+        run: python scripts/check_clarification.py
+      - name: Run operator queue listing checks
+        run: python scripts/check_queue_api.py
       - name: Verify coverage evidence boundaries
         run: python scripts/check_coverage.py
       - name: Verify local audit with synthetic inputs
@@ -47,3 +51,4 @@ jobs:
           done
           node scripts/check_operator_ui.cjs http://127.0.0.1:8765
           node scripts/check_coverage_ui.cjs http://127.0.0.1:8765
+          P109_BROWSER=chromium node scripts/check_operator_flow.cjs http://127.0.0.1:8765

@@ -88,7 +88,7 @@
 - `language`: `ru`, `kk`, `mixed`, or `unknown`; preserve uncertainty.
 - `source_category`, `source_service`, `source_status`: nullable unmodified source values.
 - `topic`, `service_id`, `priority`: nullable proposed/confirmed canonical values.
-- `priority`: `normal`, `urgent`, or `needs_review`; no medical/emergency inference claims.
+- `priority`: `normal` or `urgent` (human-confirmed decision); a detected urgency signal is a proposal until confirmed; unknown urgency is `null`, never `needs_review`; no medical/emergency inference claims.
 - `decision_status`: `pending` or `confirmed`; confirmation is explicit.
 - `incident_id`, `duplicate_of`: nullable, populated only with a checked relationship.
 - `resolution_text`, `resolved_at`: nullable; a closed status is not proof of resolution.

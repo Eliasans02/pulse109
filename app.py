@@ -17,6 +17,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from data_coverage import CoverageUnavailable, load_coverage
+from clarification import build_clarification_router, get_received_clarifications
+from queue_api import build_queue_router
 
 BANNER_TEXT = "SYNTHETIC DEMO — MODELS NOT TRAINED"
 
@@ -64,7 +66,8 @@ TOPICS = [
 ]
 VALID_TOPIC_IDS = {t["id"] for t in TOPICS}
 TOPIC_SERVICE_MAP = {t["id"]: t["default_service"] for t in TOPICS}
-VALID_PRIORITIES = {"normal", "urgent", "needs_review"}
+# Human-confirmed decision values only; urgency detection is a proposal, never mixed with review.
+VALID_PRIORITIES = {"normal", "urgent"}
 
 
 def get_db_path() -> Path:
@@ -134,6 +137,8 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Pulse 109 Synthetic Skeleton", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.include_router(build_clarification_router(get_connection, BANNER_TEXT))
+app.include_router(build_queue_router(get_connection, BANNER_TEXT, VALID_REGION_IDS))
 
 
 class IntakeRequest(BaseModel):
@@ -150,10 +155,11 @@ class ConfirmRequest(BaseModel):
 
 
 # ponytail: Mock keyword classifier used before multilingual E5 fine-tuning.
-def mock_classify(text: str) -> tuple[Optional[str], Optional[str], str]:
+def mock_classify(text: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """Return (topic, service, urgency proposal). No urgency evidence means None, never 'normal'."""
     lowered = text.lower()
     urgent_terms = ["срочно", "авария", "жарылыс", "щит", "замерзаем", "қауіп", "тоңып"]
-    p = "urgent" if any(t in lowered for t in urgent_terms) else "normal"
+    urgency = "urgent" if any(t in lowered for t in urgent_terms) else None
     patterns = [
         ("heating", ["отоплен", "батаре", "тепло", "жылу", "тоңып"]),
         ("water_supply", ["холодную воду", "горячую воду", "водопровод", "суық су", "ыстық су", "су тоқта"]),
@@ -168,8 +174,8 @@ def mock_classify(text: str) -> tuple[Optional[str], Optional[str], str]:
     ]
     for topic_id, keywords in patterns:
         if any(kw in lowered for kw in keywords):
-            return topic_id, TOPIC_SERVICE_MAP[topic_id], p
-    return None, None, "needs_review"
+            return topic_id, TOPIC_SERVICE_MAP[topic_id], urgency
+    return None, None, urgency
 
 
 @app.get("/api/health")
@@ -218,9 +224,11 @@ def get_stats(region_id: Optional[str] = None):
             params.append(region_id)
         where_pend = f"{base} {'AND' if region_id else 'WHERE'} decision_status = 'pending'"
         where_conf = f"{base} {'AND' if region_id else 'WHERE'} decision_status = 'confirmed'"
+        where_clar = f"{base} {'AND' if region_id else 'WHERE'} decision_status = 'needs_clarification'"
         total = conn.execute(f"SELECT COUNT(*) {base}", params).fetchone()[0]
         pending = conn.execute(f"SELECT COUNT(*) {where_pend}", params).fetchone()[0]
         confirmed = conn.execute(f"SELECT COUNT(*) {where_conf}", params).fetchone()[0]
+        clarification = conn.execute(f"SELECT COUNT(*) {where_clar}", params).fetchone()[0]
         by_topic = {
             r[0]: r[1]
             for r in conn.execute(
@@ -242,17 +250,11 @@ def get_stats(region_id: Optional[str] = None):
         "total_complaints": total,
         "pending_count": pending,
         "confirmed_count": confirmed,
+        "clarification_count": clarification,
         "by_topic": by_topic,
         "by_priority": by_prio,
         "by_region": by_region,
     }
-
-
-@app.get("/api/complaints")
-def list_complaints(limit: int = Query(25, ge=1, le=100)):
-    with get_connection() as conn:
-        rows = conn.execute("SELECT * FROM complaints ORDER BY ingested_at DESC LIMIT ?", (limit,)).fetchall()
-    return {"complaints": [dict(r) for r in rows]}
 
 
 @app.get("/api/complaints/{complaint_id}")
@@ -304,7 +306,9 @@ def classify_complaint(complaint_id: str):
         row = conn.execute("SELECT * FROM complaints WHERE id = ?", (complaint_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Complaint not found")
-        topic, service_id, prio = mock_classify(row["text"])
+        clarifications = get_received_clarifications(conn, complaint_id)
+        input_text = row["text"] if not clarifications else row["text"] + "\n\n" + "\n".join(clarifications)
+        topic, service_id, prio = mock_classify(input_text)
         now_iso = datetime.now(timezone.utc).isoformat()
         conn.execute(
             "UPDATE complaints SET proposed_topic = ?, proposed_service_id = ?, proposed_priority = ? WHERE id = ?",
@@ -318,7 +322,15 @@ def classify_complaint(complaint_id: str):
                 complaint_id,
                 now_iso,
                 now_iso,
-                json.dumps({"topic": topic, "service_id": service_id, "priority": prio}, ensure_ascii=False),
+                json.dumps(
+                    {
+                        "topic": topic,
+                        "service_id": service_id,
+                        "priority": prio,
+                        "clarification_count": len(clarifications),
+                    },
+                    ensure_ascii=False,
+                ),
             ),
         )
         conn.commit()
@@ -338,7 +350,12 @@ def find_similar(complaint_id: str, limit: int = Query(5, ge=1, le=20)):
         target = conn.execute("SELECT * FROM complaints WHERE id = ?", (complaint_id,)).fetchone()
         if not target:
             raise HTTPException(status_code=404, detail="Complaint not found")
-        topic = target["topic"] or target["proposed_topic"]
+        topic = target["topic"]
+        if not topic:
+            clarifications = get_received_clarifications(conn, complaint_id)
+            if clarifications:
+                topic, _, _ = mock_classify(target["text"] + "\n\n" + "\n".join(clarifications))
+            topic = topic or target["proposed_topic"]
         if topic:
             rows = conn.execute(
                 "SELECT id, data_origin, text, topic, decision_status, resolution_text "
@@ -386,6 +403,8 @@ def confirm_complaint(complaint_id: str, req: ConfirmRequest):
         row = conn.execute("SELECT * FROM complaints WHERE id = ?", (complaint_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Complaint not found")
+        if row["decision_status"] == "needs_clarification":
+            raise HTTPException(status_code=409, detail="Confirm is blocked while clarification is pending")
         conn.execute(
             "UPDATE complaints SET topic = ?, service_id = ?, priority = ?, decision_status = 'confirmed' WHERE id = ?",
             (req.topic, req.service_id, req.priority, complaint_id),

@@ -13,6 +13,11 @@ const candidate = {
 };
 const proposal = {topic: 'test_topic', service_id: html, priority: html};
 const confirmedComplaint = {...complaints[0], decision_status: 'confirmed', topic: 'test_topic', service_id: 'srv-test', priority: 'normal'};
+const queueEnvelope = (items, extra = {}) => ({
+  items, page: 1, pages: 1, total: items.length,
+  view_counts: {pending: items.length, clarification: 0, confirmed: 0, all: items.length},
+  ...extra,
+});
 
 async function clickRefreshAndSettle(page, state) {
   const before = state.queueGets.length;
@@ -34,7 +39,7 @@ async function main() {
     page.setDefaultTimeout(4000);
     const errors = [];
     const writes = [];
-    const state = {complaints: options.complaints || {status: 200, json: {complaints}}, complaint: options.complaint || {status: 200, json: {complaint: complaints[0]}}, intake: options.intake || {status: 200, json: {id: 'cmp-new'}}, similar: options.similar || {status: 200, json: {candidates: [candidate]}}, classify: options.classify || {status: 200, json: {proposal}}, confirm: options.confirm || {status: 200, json: {complaint: confirmedComplaint}}, queueGets: []};
+    const state = {complaints: options.complaints || {status: 200, json: queueEnvelope(complaints)}, complaint: options.complaint || {status: 200, json: {complaint: complaints[0]}}, intake: options.intake || {status: 200, json: {id: 'cmp-new'}}, similar: options.similar || {status: 200, json: {candidates: [candidate]}}, classify: options.classify || {status: 200, json: {proposal}}, confirm: options.confirm || {status: 200, json: {complaint: confirmedComplaint}}, queueGets: [], queueUrls: []};
     page.on('pageerror', error => errors.push(error.name));
     await page.route('**/api/**', async route => {
       const request = route.request();
@@ -47,9 +52,11 @@ async function main() {
       else if (path === '/api/stats') json = {total_complaints: 3, pending_count: 3, confirmed_count: 0, by_topic: {test_topic: 3}};
       else if (path === '/api/complaints') {
         state.queueGets.push(path);
+        state.queueUrls.push(request.url());
         const config = state.complaints;
         if (config.delayMs) await new Promise(resolve => setTimeout(resolve, config.delayMs));
         if (config.raw !== undefined) return route.fulfill({status: config.status, contentType: 'application/json', body: config.raw});
+        if (typeof config.json === 'function') return route.fulfill({status: config.status, json: config.json(request.url())});
         return route.fulfill({status: config.status, json: config.json});
       } else if (path.endsWith('/similar')) {
         const config = state.similar;
@@ -122,12 +129,15 @@ async function main() {
       assert.equal(await page.locator('#proposal-content img, #topics-breakdown img').count(), 0);
     });
 
-    await check('Tab/Enter/Space select native buttons without losing focus or confirming', async (page, writes) => {
+    await check('Tab/Enter/Space select native buttons without losing focus or confirming', async (page, writes, state) => {
       const buttons = page.locator('#queue-list button');
       assert.equal(await buttons.count(), 3, 'Every queue item needs a native button');
       await page.locator('#btn-submit-intake').focus();
-      await page.keyboard.press('Tab');
-      assert.equal(await buttons.first().evaluate(el => el === document.activeElement), true);
+      for (let i = 0; i < 12; i++) {
+        await page.keyboard.press('Tab');
+        if (await buttons.first().evaluate(el => el === document.activeElement)) break;
+      }
+      assert.equal(await buttons.first().evaluate(el => el === document.activeElement), true, 'Queue buttons stay keyboard reachable');
       assert.notEqual(await buttons.first().evaluate(el => getComputedStyle(el).outlineStyle), 'none');
       await page.keyboard.press('Enter');
       await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
@@ -143,10 +153,14 @@ async function main() {
       assert.equal(await buttons.nth(1).getAttribute('aria-pressed'), 'true');
       await page.keyboard.press('Shift+Tab');
       assert.equal(await buttons.first().evaluate(el => el === document.activeElement), true);
-      await page.keyboard.press('Tab');
-      await page.keyboard.press('Tab');
-      await page.keyboard.press('Tab');
-      assert.equal(await page.locator('#queue-refresh').evaluate(el => el === document.activeElement), true, 'Refresh button follows the queue in Tab order');
+      const getsBefore = state.queueGets.length;
+      await page.locator('#queue-refresh').focus();
+      await page.keyboard.press('Enter');
+      const deadline = Date.now() + 4000;
+      while (state.queueGets.length === getsBefore) {
+        if (Date.now() > deadline) throw new Error('Keyboard refresh did not issue a queue GET');
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
       assert.deepEqual(writes, [], 'Selection must not submit intake or operator confirmation');
       if (process.argv[3]) await page.locator('.intake-panel').screenshot({path: process.argv[3]});
     });
@@ -162,15 +176,15 @@ async function main() {
       assert.equal(await page.locator('#queue-list').getAttribute('aria-busy'), 'false');
       assert.equal(await status.textContent(), 'Показано обращений: 3');
       assert.equal(await page.locator('#queue-error').isVisible(), false);
-    }, {complaints: {status: 200, delayMs: 1200, json: {complaints}}, waitForItems: 0});
+    }, {complaints: {status: 200, delayMs: 1200, json: queueEnvelope(complaints)}, waitForItems: 0});
 
     await check('only the latest overlapping refresh may render', async (page, writes, state) => {
       const stale = {...complaints[0], id: 'synthetic-ui-stale', text: 'Ответ первого запроса'};
       const fresh = {...complaints[1], id: 'synthetic-ui-fresh', text: 'Ответ второго запроса'};
-      state.complaints = {status: 200, delayMs: 800, json: {complaints: [stale]}};
+      state.complaints = {status: 200, delayMs: 800, json: queueEnvelope([stale])};
       await page.locator('#queue-refresh').click();
       await page.waitForTimeout(100);
-      state.complaints = {status: 200, json: {complaints: [fresh]}};
+      state.complaints = {status: 200, json: queueEnvelope([fresh])};
       await page.locator('#queue-refresh').click();
       await page.waitForFunction(() => {
         const first = document.querySelector('#queue-list .queue-item');
@@ -198,7 +212,7 @@ async function main() {
       await errorBox.waitFor({state: 'visible'});
       assert.match(await errorBox.textContent(), /Не удалось/);
       assert.equal(await page.locator('#queue-list .empty-state').count(), 0);
-      state.complaints = {status: 200, json: {complaints: 'not-an-array'}};
+      state.complaints = {status: 200, json: {items: 'not-an-array'}};
       await clickRefreshAndSettle(page, state);
       assert.equal(await page.locator('#queue-list .empty-state').count(), 0);
       assert.match(await errorBox.textContent(), /Не удалось/);
@@ -208,7 +222,7 @@ async function main() {
       assert.equal(await errorBox.isVisible(), true);
       assert.equal(await page.locator('#queue-list .queue-item').count(), 0);
       assert.deepEqual(writes, []);
-    }, {complaints: {status: 200, raw: '{"complaints": ['}, waitForItems: 0});
+    }, {complaints: {status: 200, raw: '{"items": ['}, waitForItems: 0});
 
     await check('empty queue is only a successful empty list', async page => {
       const empty = page.locator('#queue-list .empty-state');
@@ -219,7 +233,7 @@ async function main() {
       assert.equal(await page.locator('#queue-list').getAttribute('aria-busy'), 'false');
       assert.match(await page.locator('#queue-status').textContent(), /Очередь пуста/);
       assert.equal(await page.locator('#queue-refresh').isEnabled(), true);
-    }, {complaints: {status: 200, json: {complaints: []}}, waitForItems: 0});
+    }, {complaints: {status: 200, json: queueEnvelope([])}, waitForItems: 0});
 
     await check('failed refresh keeps rows but marks them stale and leaves selection untouched', async (page, writes, state) => {
       await page.locator('#queue-list .queue-item').first().click();
@@ -241,7 +255,7 @@ async function main() {
       const errorBox = page.locator('#queue-error');
       await errorBox.waitFor({state: 'visible'});
       assert.match(await errorBox.textContent(), /Не удалось загрузить очередь/);
-      state.complaints = {status: 200, json: {complaints}};
+      state.complaints = {status: 200, json: queueEnvelope(complaints)};
       const refresh = page.locator('#queue-refresh');
       await refresh.focus();
       assert.equal(await refresh.evaluate(el => el === document.activeElement), true);
@@ -258,7 +272,7 @@ async function main() {
       await page.locator('#queue-list .queue-item').first().click();
       await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
       const topicBefore = await page.locator('#confirm-topic').inputValue();
-      state.complaints = {status: 200, json: {complaints: [null]}};
+      state.complaints = {status: 200, json: queueEnvelope([null])};
       await clickRefreshAndSettle(page, state);
       const errorBox = page.locator('#queue-error');
       assert.equal(await errorBox.isVisible(), true);
@@ -267,11 +281,11 @@ async function main() {
       assert.equal(await page.locator('#queue-list .queue-item').count(), 3);
       assert.equal(await page.locator('#active-id').textContent(), 'synthetic-ui-0');
       assert.equal(await page.locator('#confirm-topic').inputValue(), topicBefore);
-      state.complaints = {status: 200, json: {complaints: [{id: 'synthetic-ui-x'}]}};
+      state.complaints = {status: 200, json: queueEnvelope([{id: 'synthetic-ui-x'}])};
       await clickRefreshAndSettle(page, state);
       assert.equal(await errorBox.isVisible(), true);
       assert.equal(await page.locator('#queue-list .queue-item').count(), 3);
-      state.complaints = {status: 200, json: {complaints}};
+      state.complaints = {status: 200, json: queueEnvelope(complaints)};
       await clickRefreshAndSettle(page, state);
       assert.equal(await errorBox.isVisible(), false);
       assert.equal(await page.locator('#queue-list').getAttribute('data-stale'), null);
@@ -287,7 +301,7 @@ async function main() {
       assert.equal(await page.locator('#queue-list .queue-item').count(), 0);
       assert.equal(await page.locator('#queue-list').getAttribute('aria-busy'), 'false');
       assert.doesNotMatch(await page.locator('#queue-status').textContent(), /[0-9]/);
-    }, {complaints: {status: 200, json: {complaints: [null]}}, waitForItems: 0});
+    }, {complaints: {status: 200, json: queueEnvelope([null])}, waitForItems: 0});
 
     await check('late similar response for a previous selection cannot replace the current one', async (page, writes, state) => {
       state.similar = {status: 200, delayMs: 800, json: {candidates: [{complaint_id: 'cand-a', excerpt: 'Кандидат A', decision_status: 'pending', origin: 'synthetic'}]}};
@@ -332,7 +346,7 @@ async function main() {
       assert.equal(await page.locator('#proposal-content .proposal-pill').count(), 0, 'Stale proposal must not render');
       assert.equal(await page.locator('#confirm-topic').inputValue(), '');
       assert.equal(await page.locator('#confirm-service').inputValue(), '');
-      assert.equal(await page.locator('#confirm-priority').inputValue(), 'normal');
+      assert.equal(await page.locator('#confirm-priority').inputValue(), '', 'Unknown urgency must not become "normal"');
       assert.deepEqual(writes, ['/api/complaints/synthetic-ui-0/classify']);
     });
 
@@ -394,6 +408,7 @@ async function main() {
       await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
       await page.locator('#confirm-topic').selectOption('test_topic');
       await page.locator('#confirm-service').fill('srv-test');
+      await page.locator('#confirm-priority').selectOption('normal');
       state.confirm = {status: 200, delayMs: 800, json: {complaint: confirmedComplaint}};
       await page.locator('#btn-confirm').click();
       await page.waitForTimeout(100);
@@ -405,7 +420,7 @@ async function main() {
       assert.match(await page.locator('#confirm-success').textContent(), /synthetic-ui-0/);
       assert.equal(await page.locator('#confirm-topic').inputValue(), '');
       assert.equal(await page.locator('#confirm-service').inputValue(), '');
-      assert.equal(await page.locator('#confirm-priority').inputValue(), 'normal');
+      assert.equal(await page.locator('#confirm-priority').inputValue(), '', 'Unknown urgency must not become "normal" after reselection');
       assert.deepEqual(writes, ['/api/complaints/synthetic-ui-0/confirm']);
     });
 
@@ -414,8 +429,9 @@ async function main() {
       await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
       await page.locator('#confirm-topic').selectOption('test_topic');
       await page.locator('#confirm-service').fill('srv-test');
+      await page.locator('#confirm-priority').selectOption('normal');
       await page.locator('#btn-confirm').click();
-      await page.waitForFunction(() => document.getElementById('active-status-badge').textContent === 'confirmed');
+      await page.waitForFunction(() => document.getElementById('active-status-badge').textContent === 'подтверждено');
       assert.equal(await page.locator('#active-id').textContent(), 'synthetic-ui-0');
       assert.equal(await page.locator('#confirm-success').isVisible(), true, 'Confirmation feedback must stay visible after the card refresh');
       assert.equal(await page.locator('#queue-list').getAttribute('aria-busy'), 'false');
@@ -428,6 +444,7 @@ async function main() {
       await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
       await page.locator('#confirm-topic').selectOption('test_topic');
       await page.locator('#confirm-service').fill('srv-test');
+      await page.locator('#confirm-priority').selectOption('normal');
       state.confirm = {status: 200, json: {}};
       await page.locator('#btn-confirm').click();
       await page.waitForFunction(() => document.getElementById('confirm-error').textContent.includes('некорректный ответ'));
@@ -498,6 +515,101 @@ async function main() {
       assert.doesNotMatch(text, /null/);
       assert.deepEqual(writes, []);
     });
+
+    await check('confirm is single-submit and restores after failure', async (page, writes, state) => {
+      await page.locator('#queue-list .queue-item').first().click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
+      await page.locator('#confirm-topic').selectOption('test_topic');
+      await page.locator('#confirm-service').fill('srv-test');
+      await page.locator('#confirm-priority').selectOption('normal');
+      state.confirm = {status: 500, delayMs: 600, json: {detail: 'synthetic_failure'}};
+      await page.locator('#btn-confirm').click();
+      assert.equal(await page.locator('#btn-confirm').isEnabled(), false, 'Confirm must be disabled while in flight');
+      await page.locator('#confirm-service').press('Enter');
+      await page.locator('#btn-confirm').click({force: true}).catch(() => {});
+      await page.waitForFunction(() => document.getElementById('confirm-error').textContent.includes('synthetic_failure'));
+      assert.equal(await page.locator('#btn-confirm').isEnabled(), true, 'Confirm must be restored after failure');
+      assert.equal(await page.locator('#confirm-topic').inputValue(), 'test_topic', 'Entered topic must survive failure');
+      assert.equal(await page.locator('#confirm-service').inputValue(), 'srv-test', 'Entered service must survive failure');
+      assert.deepEqual(writes, ['/api/complaints/synthetic-ui-0/confirm'], 'Exactly one confirm POST may fire');
+    });
+
+    await check('intake is single-submit and restores after failure', async (page, writes, state) => {
+      await page.locator('#intake-region').selectOption('KZ-AST');
+      await page.locator('#intake-text').fill('Синтетическое обращение');
+      state.intake = {status: 500, delayMs: 600, json: {detail: 'synthetic_failure'}};
+      await page.locator('#btn-submit-intake').click();
+      assert.equal(await page.locator('#btn-submit-intake').isEnabled(), false, 'Intake must be disabled while in flight');
+      await page.locator('#btn-submit-intake').click({force: true}).catch(() => {});
+      await page.waitForFunction(() => document.getElementById('intake-error').textContent.includes('synthetic_failure'));
+      assert.equal(await page.locator('#btn-submit-intake').isEnabled(), true, 'Intake must be restored after failure');
+      assert.equal(await page.locator('#intake-region').inputValue(), 'KZ-AST', 'Entered region must survive failure');
+      assert.equal(await page.locator('#intake-text').inputValue(), 'Синтетическое обращение', 'Entered text must survive failure');
+      assert.deepEqual(writes, ['/api/intake'], 'Exactly one intake POST may fire');
+    });
+
+    await check('failed classification shows a visible error and allows retry', async (page, writes, state) => {
+      await page.locator('#queue-list .queue-item').first().click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
+      state.classify = {status: 500, json: {detail: 'synthetic_failure'}};
+      await page.locator('#btn-classify').click();
+      const proposalError = page.locator('#proposal-error');
+      await proposalError.waitFor({state: 'visible'});
+      assert.equal(await proposalError.textContent(), 'Не удалось запросить предложение. Повторите попытку.');
+      assert.equal(await page.locator('#btn-classify').isEnabled(), true, 'Classify must be restored after failure');
+      state.classify = {status: 200, json: {proposal: {topic: 'test_topic', service_id: 'srv-retry', priority: 'normal'}}};
+      await page.locator('#btn-classify').click();
+      await page.locator('#proposal-content .proposal-pill').waitFor();
+      assert.equal(await proposalError.isVisible(), false, 'Error must clear on successful retry');
+      assert.equal(await page.locator('#confirm-service').inputValue(), 'srv-retry');
+      assert.deepEqual(writes, ['/api/complaints/synthetic-ui-0/classify', '/api/complaints/synthetic-ui-0/classify']);
+    });
+
+    await check('queue views and filters are preserved while opening a card', async (page, writes, state) => {
+      await page.locator('[data-queue-view="all"]').click();
+      await page.locator('#queue-priority-filter').selectOption('urgent');
+      await page.locator('#queue-region-filter').selectOption('KZ-AST');
+      const deadline = Date.now() + 4000;
+      while (!/view=all/.test(state.queueUrls[state.queueUrls.length - 1] || '') ||
+             !/priority=urgent/.test(state.queueUrls[state.queueUrls.length - 1] || '') ||
+             !/region_id=KZ-AST/.test(state.queueUrls[state.queueUrls.length - 1] || '')) {
+        if (Date.now() > deadline) throw new Error('Filtered queue request was not observed');
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      await page.locator('#queue-list .queue-item').nth(1).click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-1');
+      assert.equal(await page.locator('[data-queue-view="all"]').getAttribute('aria-pressed'), 'true');
+      assert.equal(await page.locator('#queue-priority-filter').inputValue(), 'urgent');
+      assert.equal(await page.locator('#queue-region-filter').inputValue(), 'KZ-AST');
+      assert.equal(await page.locator('#queue-page-info').textContent(), 'Страница 1 из 1');
+      assert.deepEqual(writes, []);
+    });
+
+    await check('next walks the current selection and stops at the end', async (page, writes) => {
+      await page.locator('#queue-next').click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
+      await page.locator('#queue-next').click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-1');
+      await page.locator('#queue-next').click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-2');
+      assert.equal(await page.locator('#queue-next').isEnabled(), false, 'Next must stop at the last item');
+      assert.deepEqual(writes, []);
+    });
+
+    await check('pagination requests carry the page and a filter change resets it', async (page, writes, state) => {
+      await page.locator('#queue-next-page').click();
+      await page.waitForFunction(() => document.getElementById('queue-page-info').textContent === 'Страница 2 из 2');
+      assert.match(state.queueUrls[state.queueUrls.length - 1], /page=2/);
+      assert.equal(await page.locator('#queue-prev').isEnabled(), true);
+      await page.locator('#queue-priority-filter').selectOption('urgent');
+      await page.waitForFunction(() => document.getElementById('queue-page-info').textContent === 'Страница 1 из 2');
+      assert.match(state.queueUrls[state.queueUrls.length - 1], /page=1/);
+      assert.match(state.queueUrls[state.queueUrls.length - 1], /priority=urgent/);
+      assert.equal(await page.locator('[data-queue-view="pending"] .queue-count').textContent(), '5');
+      assert.deepEqual(writes, []);
+    }, {complaints: {status: 200, json: (url) => url.includes('page=2')
+      ? {items: complaints.slice(0, 2), page: 2, pages: 2, total: 13, view_counts: {pending: 5, clarification: 1, confirmed: 6, all: 12}}
+      : {items: complaints, page: 1, pages: 2, total: 13, view_counts: {pending: 5, clarification: 1, confirmed: 6, all: 12}}}});
   } finally {
     await browser.close();
   }
