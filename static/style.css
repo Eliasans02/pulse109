@@ -325,7 +325,7 @@ input:focus, select:focus, textarea:focus {
 
 .stats-counters {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 0.5rem;
   margin-bottom: 1rem;
 }
@@ -430,3 +430,7 @@ input:focus, select:focus, textarea:focus {
 .queue-pagination { display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0; font-size: 0.8rem; }
 .queue-meta { display: block; font-size: 0.72rem; color: #64748b; }
 .queue-urgency { font-weight: 700; color: #b91c1c; font-size: 0.72rem; }
+
+.queue-item { flex-wrap: wrap; }
+.queue-item > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.queue-meta { overflow-wrap: anywhere; }
