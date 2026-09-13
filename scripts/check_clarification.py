@@ -292,6 +292,9 @@ def run_check():
         assert status == 200
         assert urgent_cls["proposal"]["topic"] is None
         assert urgent_cls["proposal"]["priority"] == "urgent", "Urgency signal must survive an unknown topic"
+        status, urgent_detail = http_request(f"{base_url}/api/complaints/{urgent_id}")
+        assert urgent_detail["complaint"]["priority"] is None, "Proposal must not become a confirmed priority"
+        assert urgent_detail["complaint"]["proposed_priority"] == "urgent"
         status, _ = http_request(
             f"{base_url}/api/complaints/{urgent_id}/confirm",
             "POST",
@@ -316,7 +319,32 @@ def run_check():
         assert status == 200 and legacy_confirmed["complaint"]["priority"] == "normal"
         print("PASS 14: unknown urgency is null, urgency is a proposal, needs_review rejected, legacy preserved")
 
-        # 15. Restart persistence: statuses and event trails survive
+        # 15. Re-classification never overwrites the human decision
+        status, human_created = http_request(
+            f"{base_url}/api/intake", "POST", {"text": "Авария, срочно, нет отопления", "region_id": "KZ-ABA"}
+        )
+        assert status == 201
+        human_id = human_created["id"]
+        status, _ = http_request(f"{base_url}/api/complaints/{human_id}/classify", "POST")
+        assert status == 200
+        status, human_confirmed = http_request(
+            f"{base_url}/api/complaints/{human_id}/confirm",
+            "POST",
+            {"topic": "roads", "service_id": "srv_roads", "priority": "normal"},
+        )
+        assert status == 200 and human_confirmed["complaint"]["priority"] == "normal"
+        status, again = http_request(f"{base_url}/api/complaints/{human_id}/classify", "POST")
+        assert status == 200 and again["proposal"]["priority"] == "urgent"
+        status, human_detail = http_request(f"{base_url}/api/complaints/{human_id}")
+        assert human_detail["complaint"]["priority"] == "normal", "Human priority must survive re-classification"
+        assert human_detail["complaint"]["topic"] == "roads" and human_detail["complaint"]["service_id"] == "srv_roads"
+        assert human_detail["complaint"]["decision_status"] == "confirmed"
+        assert human_detail["complaint"]["proposed_priority"] == "urgent"
+        status, urgent_queue = http_request(f"{base_url}/api/complaints?priority=urgent&view=all&page_size=50")
+        assert status == 200 and human_id not in [c["id"] for c in urgent_queue["items"]]
+        print("PASS 15: re-classification updates only the proposal; human priority/topic/service stay")
+
+        # 16. Restart persistence: statuses and event trails survive
         stop_server(proc)
         proc, base_url = start_server(repo_root, db_path, find_free_port())
         detail_after = http_request(f"{base_url}/api/complaints/{cid}")[1]
@@ -332,11 +360,11 @@ def run_check():
             "clarification_resolved",
         ]
         stats_after = http_request(f"{base_url}/api/stats")[1]
-        assert stats_after["total_complaints"] == init_stats["total_complaints"] + 4
-        print("PASS 15: Statuses and audit trails persist across a server restart")
+        assert stats_after["total_complaints"] == init_stats["total_complaints"] + 5
+        print("PASS 16: Statuses and audit trails persist across a server restart")
 
         print("\n========================================================")
-        print("ALL 15 CLARIFICATION CHECKS PASSED SUCCESSFULLY!")
+        print("ALL 16 CLARIFICATION CHECKS PASSED SUCCESSFULLY!")
         print("========================================================")
     finally:
         print("[*] Terminating test server process...")

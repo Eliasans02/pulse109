@@ -51,3 +51,4 @@ jobs:
           done
           node scripts/check_operator_ui.cjs http://127.0.0.1:8765
           node scripts/check_coverage_ui.cjs http://127.0.0.1:8765
+          P109_BROWSER=chromium node scripts/check_operator_flow.cjs http://127.0.0.1:8765
