@@ -103,10 +103,35 @@
       </form>
 
       <div class="recent-queue">
-        <h3>Очередь последних обращений</h3>
+        <h3>Очередь обращений</h3>
+        <div class="queue-controls">
+          <div class="queue-view-tabs" role="group" aria-label="Представления очереди">
+            <button type="button" class="btn btn-sm btn-secondary active" data-queue-view="pending" aria-pressed="true">К разбору <span class="queue-count">—</span></button>
+            <button type="button" class="btn btn-sm btn-secondary" data-queue-view="clarification" aria-pressed="false">Нужно уточнение <span class="queue-count">—</span></button>
+            <button type="button" class="btn btn-sm btn-secondary" data-queue-view="confirmed" aria-pressed="false">Обработанные <span class="queue-count">—</span></button>
+            <button type="button" class="btn btn-sm btn-secondary" data-queue-view="all" aria-pressed="false">Все <span class="queue-count">—</span></button>
+          </div>
+          <div class="queue-filters">
+            <label for="queue-region-filter">Регион</label>
+            <select id="queue-region-filter"><option value="">Все регионы</option></select>
+            <label for="queue-priority-filter">Срочность</label>
+            <select id="queue-priority-filter">
+              <option value="">Любая</option>
+              <option value="urgent">Срочные</option>
+              <option value="normal">Обычные</option>
+              <option value="unknown">Неизвестно</option>
+            </select>
+            <button type="button" class="btn btn-sm btn-secondary" id="queue-next" disabled>Следующая</button>
+          </div>
+        </div>
         <ul id="queue-list" class="queue-list" role="list">
           <li class="empty-state">Загрузка обращений...</li>
         </ul>
+        <div class="queue-pagination">
+          <button type="button" class="btn btn-sm btn-secondary" id="queue-prev" disabled>Назад</button>
+          <span id="queue-page-info" class="meta-note">Страница 1 из 1</span>
+          <button type="button" class="btn btn-sm btn-secondary" id="queue-next-page" disabled>Вперёд</button>
+        </div>
         <button type="button" class="btn btn-secondary" id="queue-refresh">Обновить очередь</button>
         <p id="queue-status" class="meta-note" role="status" aria-live="polite"></p>
         <p id="queue-error" class="error-msg" role="alert" hidden></p>

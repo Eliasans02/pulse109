@@ -7,6 +7,10 @@ let classifyRequestId = 0;
 let confirmRequestId = 0;
 let selectionGeneration = 0;
 
+const STATUS_LABELS = {pending: "в ожидании", needs_clarification: "нужно уточнение", confirmed: "подтверждено"};
+const STATUS_CLASSES = {pending: "badge-pending", needs_clarification: "badge-clarification", confirmed: "badge-confirmed"};
+const queueState = {view: "pending", regionId: "", priority: "", page: 1, pageSize: 10, pages: 1, items: [], counts: null};
+
 document.addEventListener("DOMContentLoaded", () => {
   initApp();
   setupEventListeners();
@@ -26,6 +30,36 @@ function setupEventListeners() {
 
   document.getElementById("intake-form").addEventListener("submit", handleIntakeSubmit);
   document.getElementById("queue-refresh").addEventListener("click", loadQueue);
+  document.querySelectorAll("[data-queue-view]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      queueState.view = btn.dataset.queueView;
+      queueState.page = 1;
+      loadQueue();
+    });
+  });
+  document.getElementById("queue-region-filter").addEventListener("change", (event) => {
+    queueState.regionId = event.target.value;
+    queueState.page = 1;
+    loadQueue();
+  });
+  document.getElementById("queue-priority-filter").addEventListener("change", (event) => {
+    queueState.priority = event.target.value;
+    queueState.page = 1;
+    loadQueue();
+  });
+  document.getElementById("queue-next").addEventListener("click", handleQueueNext);
+  document.getElementById("queue-prev").addEventListener("click", () => {
+    if (queueState.page > 1) {
+      queueState.page -= 1;
+      loadQueue();
+    }
+  });
+  document.getElementById("queue-next-page").addEventListener("click", () => {
+    if (queueState.page < queueState.pages) {
+      queueState.page += 1;
+      loadQueue();
+    }
+  });
   document.getElementById("btn-classify").addEventListener("click", handleClassify);
   document.getElementById("confirm-form").addEventListener("submit", handleConfirmSubmit);
   document.getElementById("confirm-topic").addEventListener("change", handleTopicChange);
@@ -55,6 +89,20 @@ async function loadRegions() {
       opt.textContent = `${r.name_ru} (${r.name_kk})`;
       select.appendChild(opt);
     });
+    const queueFilter = document.getElementById("queue-region-filter");
+    const allOption = document.createElement("option");
+    allOption.value = "";
+    allOption.textContent = "Все регионы";
+    queueFilter.replaceChildren(
+      allOption,
+      ...cachedRegions.map(r => {
+        const opt = document.createElement("option");
+        opt.value = r.id;
+        opt.textContent = r.name_ru;
+        return opt;
+      })
+    );
+    queueFilter.value = queueState.regionId;
   } catch (err) {
     console.error("Failed to load regions", err);
   }
@@ -102,6 +150,54 @@ async function loadStats() {
   }
 }
 
+function queueRequestUrl() {
+  const params = new URLSearchParams({
+    view: queueState.view,
+    page: String(queueState.page),
+    page_size: String(queueState.pageSize),
+  });
+  if (queueState.regionId) params.set("region_id", queueState.regionId);
+  if (queueState.priority) params.set("priority", queueState.priority);
+  return `/api/complaints?${params.toString()}`;
+}
+
+function queueHasNext() {
+  const index = queueState.items.findIndex(c => c.id === activeComplaint?.id);
+  if (index === -1) return queueState.items.length > 0 || queueState.page < queueState.pages;
+  return index < queueState.items.length - 1 || queueState.page < queueState.pages;
+}
+
+function updateQueueControls() {
+  document.querySelectorAll("[data-queue-view]").forEach(btn => {
+    const active = btn.dataset.queueView === queueState.view;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-pressed", String(active));
+    const countEl = btn.querySelector(".queue-count");
+    if (countEl) countEl.textContent = queueState.counts ? String(queueState.counts[btn.dataset.queueView] ?? "—") : "—";
+  });
+  document.getElementById("queue-page-info").textContent = `Страница ${queueState.page} из ${queueState.pages}`;
+  document.getElementById("queue-prev").disabled = queueState.page <= 1;
+  document.getElementById("queue-next-page").disabled = queueState.page >= queueState.pages;
+  document.getElementById("queue-next").disabled = !queueHasNext();
+}
+
+async function handleQueueNext() {
+  const index = queueState.items.findIndex(c => c.id === activeComplaint?.id);
+  if (index === -1 && queueState.items.length) {
+    selectComplaint(queueState.items[0]);
+    return;
+  }
+  if (index >= 0 && index < queueState.items.length - 1) {
+    selectComplaint(queueState.items[index + 1]);
+    return;
+  }
+  if (queueState.page < queueState.pages) {
+    queueState.page += 1;
+    await loadQueue();
+    if (queueState.items.length) selectComplaint(queueState.items[0]);
+  }
+}
+
 async function loadQueue() {
   const requestId = ++queueRequestId;
   const list = document.getElementById("queue-list");
@@ -111,13 +207,14 @@ async function loadQueue() {
   status.textContent = "Загружаем очередь…";
   errorBox.hidden = true;
 
-  let rows;
+  let payload;
   try {
-    const res = await fetch("/api/complaints?limit=30");
+    const res = await fetch(queueRequestUrl());
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    if (!data || !Array.isArray(data.complaints)) throw new Error("Invalid queue response");
-    rows = data.complaints.map(c => {
+    const items = Array.isArray(data?.items) ? data.items : (Array.isArray(data?.complaints) ? data.complaints : null);
+    if (!items) throw new Error("Invalid queue response");
+    const rows = items.map(c => {
       if (!c || typeof c.id !== "string" || typeof c.text !== "string") throw new Error("Invalid queue response");
       const item = document.createElement("li");
       const button = document.createElement("button");
@@ -127,15 +224,32 @@ async function loadQueue() {
       const selected = activeComplaint?.id === c.id;
       button.classList.toggle("selected", selected);
       button.setAttribute("aria-pressed", String(selected));
-      const badgeClass = c.decision_status === "confirmed" ? "badge-confirmed" : "badge-pending";
       const shortText = c.text.length > 55 ? c.text.substring(0, 55) + "..." : c.text;
       const preview = textElement("span", shortText);
       preview.title = c.text;
-      button.append(preview, textElement("span", c.decision_status, `badge ${badgeClass}`));
+      const regionObj = cachedRegions.find(r => r.id === c.region_id);
+      const regionName = regionObj ? regionObj.name_ru : (c.region_id || "—");
+      const eventDate = String(c.received_at || c.ingested_at || "").slice(0, 10);
+      const statusValue = typeof c.decision_status === "string" ? c.decision_status : "";
+      button.append(
+        preview,
+        textElement("span", `${regionName} · ${eventDate || "—"}`, "queue-meta"),
+        textElement("span", STATUS_LABELS[statusValue] || "—", `badge ${STATUS_CLASSES[statusValue] || "badge-pending"}`)
+      );
+      const urgency = c.priority === "urgent" ? "срочно" : (c.proposed_priority === "urgent" ? "предложено: срочно" : "");
+      if (urgency) button.append(textElement("span", urgency, "queue-urgency"));
       button.addEventListener("click", () => selectComplaint(c));
       item.appendChild(button);
       return item;
     });
+    payload = {
+      items,
+      rows,
+      page: Number.isInteger(data.page) ? data.page : queueState.page,
+      pages: Number.isInteger(data.pages) ? data.pages : 1,
+      total: Number.isInteger(data.total) ? data.total : items.length,
+      counts: data.view_counts && typeof data.view_counts === "object" ? data.view_counts : null,
+    };
   } catch (err) {
     if (requestId !== queueRequestId) return;
     list.setAttribute("aria-busy", "false");
@@ -156,13 +270,19 @@ async function loadQueue() {
   if (requestId !== queueRequestId) return;
   list.setAttribute("aria-busy", "false");
   delete list.dataset.stale;
-  if (!rows.length) {
+  queueState.items = payload.items;
+  queueState.page = payload.page;
+  queueState.pages = payload.pages;
+  queueState.counts = payload.counts;
+  if (!payload.rows.length) {
     list.replaceChildren(textElement("li", "Очередь пуста", "empty-state"));
     status.textContent = "Очередь пуста.";
+    updateQueueControls();
     return;
   }
-  list.replaceChildren(...rows);
-  status.textContent = `Показано обращений: ${rows.length}`;
+  list.replaceChildren(...payload.rows);
+  status.textContent = `Показано обращений: ${payload.total}`;
+  updateQueueControls();
 }
 
 function selectComplaint(c) {
@@ -175,8 +295,9 @@ function selectComplaint(c) {
   document.getElementById("active-origin").textContent = c.data_origin;
 
   const badge = document.getElementById("active-status-badge");
-  badge.textContent = c.decision_status;
-  badge.className = `badge ${c.decision_status === "confirmed" ? "badge-confirmed" : "badge-pending"}`;
+  const statusValue = typeof c.decision_status === "string" ? c.decision_status : "";
+  badge.textContent = STATUS_LABELS[statusValue] || "—";
+  badge.className = `badge ${STATUS_CLASSES[statusValue] || "badge-pending"}`;
 
   document.getElementById("btn-classify").disabled = false;
   document.getElementById("btn-confirm").disabled = c.decision_status === "needs_clarification";
@@ -208,6 +329,7 @@ function selectComplaint(c) {
     button.classList.toggle("selected", selected);
     button.setAttribute("aria-pressed", String(selected));
   });
+  updateQueueControls();
 }
 
 async function handleIntakeSubmit(e) {

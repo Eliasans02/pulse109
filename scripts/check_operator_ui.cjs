@@ -34,7 +34,7 @@ async function main() {
     page.setDefaultTimeout(4000);
     const errors = [];
     const writes = [];
-    const state = {complaints: options.complaints || {status: 200, json: {complaints}}, complaint: options.complaint || {status: 200, json: {complaint: complaints[0]}}, intake: options.intake || {status: 200, json: {id: 'cmp-new'}}, similar: options.similar || {status: 200, json: {candidates: [candidate]}}, classify: options.classify || {status: 200, json: {proposal}}, confirm: options.confirm || {status: 200, json: {complaint: confirmedComplaint}}, queueGets: []};
+    const state = {complaints: options.complaints || {status: 200, json: {complaints}}, complaint: options.complaint || {status: 200, json: {complaint: complaints[0]}}, intake: options.intake || {status: 200, json: {id: 'cmp-new'}}, similar: options.similar || {status: 200, json: {candidates: [candidate]}}, classify: options.classify || {status: 200, json: {proposal}}, confirm: options.confirm || {status: 200, json: {complaint: confirmedComplaint}}, queueGets: [], queueUrls: []};
     page.on('pageerror', error => errors.push(error.name));
     await page.route('**/api/**', async route => {
       const request = route.request();
@@ -47,9 +47,11 @@ async function main() {
       else if (path === '/api/stats') json = {total_complaints: 3, pending_count: 3, confirmed_count: 0, by_topic: {test_topic: 3}};
       else if (path === '/api/complaints') {
         state.queueGets.push(path);
+        state.queueUrls.push(request.url());
         const config = state.complaints;
         if (config.delayMs) await new Promise(resolve => setTimeout(resolve, config.delayMs));
         if (config.raw !== undefined) return route.fulfill({status: config.status, contentType: 'application/json', body: config.raw});
+        if (typeof config.json === 'function') return route.fulfill({status: config.status, json: config.json(request.url())});
         return route.fulfill({status: config.status, json: config.json});
       } else if (path.endsWith('/similar')) {
         const config = state.similar;
@@ -122,12 +124,15 @@ async function main() {
       assert.equal(await page.locator('#proposal-content img, #topics-breakdown img').count(), 0);
     });
 
-    await check('Tab/Enter/Space select native buttons without losing focus or confirming', async (page, writes) => {
+    await check('Tab/Enter/Space select native buttons without losing focus or confirming', async (page, writes, state) => {
       const buttons = page.locator('#queue-list button');
       assert.equal(await buttons.count(), 3, 'Every queue item needs a native button');
       await page.locator('#btn-submit-intake').focus();
-      await page.keyboard.press('Tab');
-      assert.equal(await buttons.first().evaluate(el => el === document.activeElement), true);
+      for (let i = 0; i < 12; i++) {
+        await page.keyboard.press('Tab');
+        if (await buttons.first().evaluate(el => el === document.activeElement)) break;
+      }
+      assert.equal(await buttons.first().evaluate(el => el === document.activeElement), true, 'Queue buttons stay keyboard reachable');
       assert.notEqual(await buttons.first().evaluate(el => getComputedStyle(el).outlineStyle), 'none');
       await page.keyboard.press('Enter');
       await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
@@ -143,10 +148,14 @@ async function main() {
       assert.equal(await buttons.nth(1).getAttribute('aria-pressed'), 'true');
       await page.keyboard.press('Shift+Tab');
       assert.equal(await buttons.first().evaluate(el => el === document.activeElement), true);
-      await page.keyboard.press('Tab');
-      await page.keyboard.press('Tab');
-      await page.keyboard.press('Tab');
-      assert.equal(await page.locator('#queue-refresh').evaluate(el => el === document.activeElement), true, 'Refresh button follows the queue in Tab order');
+      const getsBefore = state.queueGets.length;
+      await page.locator('#queue-refresh').focus();
+      await page.keyboard.press('Enter');
+      const deadline = Date.now() + 4000;
+      while (state.queueGets.length === getsBefore) {
+        if (Date.now() > deadline) throw new Error('Keyboard refresh did not issue a queue GET');
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
       assert.deepEqual(writes, [], 'Selection must not submit intake or operator confirmation');
       if (process.argv[3]) await page.locator('.intake-panel').screenshot({path: process.argv[3]});
     });
@@ -417,7 +426,7 @@ async function main() {
       await page.locator('#confirm-service').fill('srv-test');
       await page.locator('#confirm-priority').selectOption('normal');
       await page.locator('#btn-confirm').click();
-      await page.waitForFunction(() => document.getElementById('active-status-badge').textContent === 'confirmed');
+      await page.waitForFunction(() => document.getElementById('active-status-badge').textContent === 'подтверждено');
       assert.equal(await page.locator('#active-id').textContent(), 'synthetic-ui-0');
       assert.equal(await page.locator('#confirm-success').isVisible(), true, 'Confirmation feedback must stay visible after the card refresh');
       assert.equal(await page.locator('#queue-list').getAttribute('aria-busy'), 'false');
@@ -550,6 +559,52 @@ async function main() {
       assert.equal(await page.locator('#confirm-service').inputValue(), 'srv-retry');
       assert.deepEqual(writes, ['/api/complaints/synthetic-ui-0/classify', '/api/complaints/synthetic-ui-0/classify']);
     });
+
+    await check('queue views and filters are preserved while opening a card', async (page, writes, state) => {
+      await page.locator('[data-queue-view="all"]').click();
+      await page.locator('#queue-priority-filter').selectOption('urgent');
+      await page.locator('#queue-region-filter').selectOption('KZ-AST');
+      const deadline = Date.now() + 4000;
+      while (!/view=all/.test(state.queueUrls[state.queueUrls.length - 1] || '') ||
+             !/priority=urgent/.test(state.queueUrls[state.queueUrls.length - 1] || '') ||
+             !/region_id=KZ-AST/.test(state.queueUrls[state.queueUrls.length - 1] || '')) {
+        if (Date.now() > deadline) throw new Error('Filtered queue request was not observed');
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      await page.locator('#queue-list .queue-item').nth(1).click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-1');
+      assert.equal(await page.locator('[data-queue-view="all"]').getAttribute('aria-pressed'), 'true');
+      assert.equal(await page.locator('#queue-priority-filter').inputValue(), 'urgent');
+      assert.equal(await page.locator('#queue-region-filter').inputValue(), 'KZ-AST');
+      assert.equal(await page.locator('#queue-page-info').textContent(), 'Страница 1 из 1');
+      assert.deepEqual(writes, []);
+    });
+
+    await check('next walks the current selection and stops at the end', async (page, writes) => {
+      await page.locator('#queue-next').click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
+      await page.locator('#queue-next').click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-1');
+      await page.locator('#queue-next').click();
+      await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-2');
+      assert.equal(await page.locator('#queue-next').isEnabled(), false, 'Next must stop at the last item');
+      assert.deepEqual(writes, []);
+    });
+
+    await check('pagination requests carry the page and a filter change resets it', async (page, writes, state) => {
+      await page.locator('#queue-next-page').click();
+      await page.waitForFunction(() => document.getElementById('queue-page-info').textContent === 'Страница 2 из 2');
+      assert.match(state.queueUrls[state.queueUrls.length - 1], /page=2/);
+      assert.equal(await page.locator('#queue-prev').isEnabled(), true);
+      await page.locator('#queue-priority-filter').selectOption('urgent');
+      await page.waitForFunction(() => document.getElementById('queue-page-info').textContent === 'Страница 1 из 2');
+      assert.match(state.queueUrls[state.queueUrls.length - 1], /page=1/);
+      assert.match(state.queueUrls[state.queueUrls.length - 1], /priority=urgent/);
+      assert.equal(await page.locator('[data-queue-view="pending"] .queue-count').textContent(), '5');
+      assert.deepEqual(writes, []);
+    }, {complaints: {status: 200, json: (url) => url.includes('page=2')
+      ? {items: complaints.slice(0, 2), page: 2, pages: 2, total: 13, view_counts: {pending: 5, clarification: 1, confirmed: 6, all: 12}}
+      : {items: complaints, page: 1, pages: 2, total: 13, view_counts: {pending: 5, clarification: 1, confirmed: 6, all: 12}}}});
   } finally {
     await browser.close();
   }

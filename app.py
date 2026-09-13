@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from data_coverage import CoverageUnavailable, load_coverage
 from clarification import build_clarification_router, get_received_clarifications
+from queue_api import build_queue_router
 
 BANNER_TEXT = "SYNTHETIC DEMO — MODELS NOT TRAINED"
 
@@ -137,6 +138,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="Pulse 109 Synthetic Skeleton", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.include_router(build_clarification_router(get_connection, BANNER_TEXT))
+app.include_router(build_queue_router(get_connection, BANNER_TEXT, VALID_REGION_IDS))
 
 
 class IntakeRequest(BaseModel):
@@ -253,13 +255,6 @@ def get_stats(region_id: Optional[str] = None):
         "by_priority": by_prio,
         "by_region": by_region,
     }
-
-
-@app.get("/api/complaints")
-def list_complaints(limit: int = Query(25, ge=1, le=100)):
-    with get_connection() as conn:
-        rows = conn.execute("SELECT * FROM complaints ORDER BY ingested_at DESC LIMIT ?", (limit,)).fetchall()
-    return {"complaints": [dict(r) for r in rows]}
 
 
 @app.get("/api/complaints/{complaint_id}")
