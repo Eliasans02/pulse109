@@ -85,6 +85,7 @@ async function loadStats() {
     document.getElementById("stat-total").textContent = data.total_complaints;
     document.getElementById("stat-pending").textContent = data.pending_count;
     document.getElementById("stat-confirmed").textContent = data.confirmed_count;
+    document.getElementById("stat-clarification").textContent = data.clarification_count ?? "—";
 
     const breakdown = document.getElementById("topics-breakdown");
     breakdown.innerHTML = "";
@@ -178,7 +179,7 @@ function selectComplaint(c) {
   badge.className = `badge ${c.decision_status === "confirmed" ? "badge-confirmed" : "badge-pending"}`;
 
   document.getElementById("btn-classify").disabled = false;
-  document.getElementById("btn-confirm").disabled = false;
+  document.getElementById("btn-confirm").disabled = c.decision_status === "needs_clarification";
   document.getElementById("confirm-error").style.display = "none";
   document.getElementById("confirm-success").style.display = "none";
 
@@ -198,6 +199,8 @@ function selectComplaint(c) {
     document.getElementById("proposal-content").innerHTML = '<p class="empty-state">Нажмите «Запросить предложение» для анализа текста.</p>';
   }
   loadSimilar(c.id);
+  syncClarificationControls();
+  refreshClarifications(c.id);
   document.querySelectorAll("#queue-list button").forEach(button => {
     const selected = button.dataset.complaintId === c.id;
     button.classList.toggle("selected", selected);

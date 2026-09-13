@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from data_coverage import CoverageUnavailable, load_coverage
+from clarification import build_clarification_router
 
 BANNER_TEXT = "SYNTHETIC DEMO — MODELS NOT TRAINED"
 
@@ -134,6 +135,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Pulse 109 Synthetic Skeleton", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.include_router(build_clarification_router(get_connection, BANNER_TEXT))
 
 
 class IntakeRequest(BaseModel):
@@ -218,9 +220,11 @@ def get_stats(region_id: Optional[str] = None):
             params.append(region_id)
         where_pend = f"{base} {'AND' if region_id else 'WHERE'} decision_status = 'pending'"
         where_conf = f"{base} {'AND' if region_id else 'WHERE'} decision_status = 'confirmed'"
+        where_clar = f"{base} {'AND' if region_id else 'WHERE'} decision_status = 'needs_clarification'"
         total = conn.execute(f"SELECT COUNT(*) {base}", params).fetchone()[0]
         pending = conn.execute(f"SELECT COUNT(*) {where_pend}", params).fetchone()[0]
         confirmed = conn.execute(f"SELECT COUNT(*) {where_conf}", params).fetchone()[0]
+        clarification = conn.execute(f"SELECT COUNT(*) {where_clar}", params).fetchone()[0]
         by_topic = {
             r[0]: r[1]
             for r in conn.execute(
@@ -242,6 +246,7 @@ def get_stats(region_id: Optional[str] = None):
         "total_complaints": total,
         "pending_count": pending,
         "confirmed_count": confirmed,
+        "clarification_count": clarification,
         "by_topic": by_topic,
         "by_priority": by_prio,
         "by_region": by_region,
@@ -386,6 +391,8 @@ def confirm_complaint(complaint_id: str, req: ConfirmRequest):
         row = conn.execute("SELECT * FROM complaints WHERE id = ?", (complaint_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Complaint not found")
+        if row["decision_status"] == "needs_clarification":
+            raise HTTPException(status_code=409, detail="Confirm is blocked while clarification is pending")
         conn.execute(
             "UPDATE complaints SET topic = ?, service_id = ?, priority = ?, decision_status = 'confirmed' WHERE id = ?",
             (req.topic, req.service_id, req.priority, complaint_id),

@@ -129,6 +129,9 @@
             <span>Регион: <strong id="active-region">—</strong></span>
             <span>Источник: <strong id="active-origin">synthetic</strong></span>
           </div>
+          <div class="meta-row" id="active-clarification" hidden>
+            <span>Уточнение: <strong id="active-clarification-text">—</strong></span>
+          </div>
         </div>
       </div>
 
@@ -144,6 +147,38 @@
           <p class="empty-state">Нажмите «Запросить предложение» для анализа текста.</p>
         </div>
         <div id="proposal-error" class="error-msg" role="alert" hidden>Не удалось запросить предложение. Повторите попытку.</div>
+      </div>
+
+      <div class="confirm-box" id="clarification-box">
+        <h3>Нужно уточнение (Needs clarification)</h3>
+        <p class="meta-note"><small>Причина и вопрос сохраняются в истории. Гражданину ничего не отправляется автоматически.</small></p>
+        <form id="clarification-form" novalidate>
+          <div class="form-group">
+            <label for="clarification-reason">Причина уточнения</label>
+            <select id="clarification-reason">
+              <option value="unknown_place">Неизвестно место</option>
+              <option value="unclear_event">Непонятно, что произошло</option>
+              <option value="insufficient_detail">Недостаточно деталей</option>
+              <option value="multiple_problems">Несколько проблем</option>
+              <option value="other">Другое</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="clarification-question">Вопрос гражданину (редактируемый)</label>
+            <textarea id="clarification-question" rows="2" maxlength="1000"></textarea>
+          </div>
+          <div id="clarification-error" class="error-msg" role="alert" style="display:none;"></div>
+          <div id="clarification-success" class="success-msg" role="status" style="display:none;"></div>
+          <button type="submit" class="btn btn-secondary" id="btn-request-clarification" disabled>Запросить уточнение</button>
+        </form>
+        <div class="form-group" style="margin-top:0.8rem;">
+          <label for="clarification-supplement">Полученное уточнение</label>
+          <textarea id="clarification-supplement" rows="2" maxlength="10000"></textarea>
+        </div>
+        <div id="clarification-response-error" class="error-msg" role="alert" style="display:none;"></div>
+        <div id="clarification-response-success" class="success-msg" role="status" style="display:none;"></div>
+        <button type="button" class="btn btn-secondary" id="btn-save-supplement" disabled>Сохранить уточнение</button>
+        <button type="button" class="btn btn-secondary" id="btn-resume" disabled>Вернуть в обработку</button>
       </div>
 
       <div class="similar-box">
@@ -200,6 +235,10 @@
           <div class="stat-num" id="stat-confirmed">0</div>
           <div class="stat-label">Подтверждено (Confirmed)</div>
         </div>
+        <div class="stat-card">
+          <div class="stat-num" id="stat-clarification">0</div>
+          <div class="stat-label">Нужно уточнение (Needs clarification)</div>
+        </div>
       </div>
 
       <div class="summary-section">
@@ -227,5 +266,6 @@
 
   <script src="/static/app.js"></script>
   <script src="/static/coverage.js"></script>
+  <script src="/static/clarification.js"></script>
 </body>
 </html>
