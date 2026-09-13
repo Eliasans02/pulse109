@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -199,7 +200,7 @@ def run_check():
             assert status == 404, f"Unknown complaint {action} expected 404, got {status}"
         print("PASS 10: Post-confirm transitions 409; unknown complaint ids 404")
 
-        # 11. KK scenario: unknown topic stays needs_review and urgency is not invented
+        # 11. KK scenario: unknown topic stays unset and urgency is not invented
         status, created_kk = http_request(
             f"{base_url}/api/intake", "POST", {"text": "Түсініксіз жағдай, көмек керек", "region_id": "KZ-ALA", "language": "kk"}
         )
@@ -208,14 +209,14 @@ def run_check():
         status, cls_kk = http_request(f"{base_url}/api/complaints/{kk_id}/classify", "POST")
         assert status == 200
         assert cls_kk["proposal"]["topic"] is None
-        assert cls_kk["proposal"]["priority"] == "needs_review"
+        assert cls_kk["proposal"]["priority"] is None, "Unknown urgency must be null, not needs_review"
         status, clar_kk = http_request(
             f"{base_url}/api/complaints/{kk_id}/clarification",
             "POST",
             {"reason": "unclear_event", "question": "Қандай мәселе болғанын толығырақ жазыңыз.", "actor": "operator_t2"},
         )
         assert status == 200
-        assert clar_kk["complaint"]["proposed_priority"] == "needs_review"
+        assert clar_kk["complaint"]["proposed_priority"] is None
         status, _ = http_request(
             f"{base_url}/api/complaints/{kk_id}/clarification-response",
             "POST",
@@ -226,8 +227,8 @@ def run_check():
         assert status == 200
         assert resumed_kk["complaint"]["topic"] is None
         assert resumed_kk["complaint"]["service_id"] is None
-        assert resumed_kk["complaint"]["proposed_priority"] == "needs_review"
-        print("PASS 11: KK unknown-topic case: no invented topic/service; needs_review kept as-is")
+        assert resumed_kk["complaint"]["proposed_priority"] is None
+        print("PASS 11: KK unknown-topic case: no invented topic/service/urgency")
 
         # 12. Blank question rejected on a fresh complaint
         status, created_blank = http_request(
@@ -242,7 +243,80 @@ def run_check():
         assert status == 422, f"Blank question expected 422, got {status}"
         print("PASS 12: Blank question rejected with 422")
 
-        # 13. Restart persistence: statuses and event trails survive
+        # 13. Re-classification and search use original + received clarifications, kept separately
+        status, enrich_created = http_request(
+            f"{base_url}/api/intake", "POST", {"text": "Жалоба без конкретики", "region_id": "KZ-AST", "language": "ru"}
+        )
+        assert status == 201
+        enrich_id = enrich_created["id"]
+        status, enrich_cls = http_request(f"{base_url}/api/complaints/{enrich_id}/classify", "POST")
+        assert status == 200
+        assert enrich_cls["proposal"]["topic"] is None
+        assert enrich_cls["proposal"]["priority"] is None
+        status, _ = http_request(
+            f"{base_url}/api/complaints/{enrich_id}/clarification",
+            "POST",
+            {"reason": "insufficient_detail", "question": "Добавьте детали.", "actor": "operator_t2"},
+        )
+        assert status == 200
+        supplement = "Мұнда мусор шығарылмайды, контейнер жоқ"
+        status, _ = http_request(
+            f"{base_url}/api/complaints/{enrich_id}/clarification-response",
+            "POST",
+            {"text": supplement, "actor": "operator_t2"},
+        )
+        assert status == 200
+        status, enrich_cls2 = http_request(f"{base_url}/api/complaints/{enrich_id}/classify", "POST")
+        assert status == 200
+        assert enrich_cls2["proposal"]["topic"] == "waste_management", "Classification must see the received clarification"
+        assert enrich_cls2["proposal"]["service_id"] == "srv_clean"
+        status, enrich_detail = http_request(f"{base_url}/api/complaints/{enrich_id}")
+        assert enrich_detail["complaint"]["text"] == "Жалоба без конкретики"
+        proposed_events = [e for e in enrich_detail["events"] if e["event_type"] == "classification_proposed"]
+        assert json.loads(proposed_events[-1]["payload"])["clarification_count"] == 1
+        received_events = [e for e in enrich_detail["events"] if e["event_type"] == "clarification_received"]
+        assert json.loads(received_events[-1]["payload"])["text"] == supplement
+        status, enrich_similar = http_request(f"{base_url}/api/complaints/{enrich_id}/similar?limit=5")
+        assert status == 200
+        assert enrich_similar["candidates"], "Enriched retrieval must find candidates"
+        assert all(c["topic"] == "waste_management" for c in enrich_similar["candidates"])
+        print("PASS 13: classify and similar use original + clarifications, stored separately")
+
+        # 14. Priority semantics: unknown is null, urgency is a proposal, legacy values survive
+        status, urgent_created = http_request(
+            f"{base_url}/api/intake", "POST", {"text": "Авария, непонятно что происходит", "region_id": "KZ-AST"}
+        )
+        assert status == 201
+        urgent_id = urgent_created["id"]
+        status, urgent_cls = http_request(f"{base_url}/api/complaints/{urgent_id}/classify", "POST")
+        assert status == 200
+        assert urgent_cls["proposal"]["topic"] is None
+        assert urgent_cls["proposal"]["priority"] == "urgent", "Urgency signal must survive an unknown topic"
+        status, _ = http_request(
+            f"{base_url}/api/complaints/{urgent_id}/confirm",
+            "POST",
+            {"topic": "roads", "service_id": "srv_roads", "priority": "needs_review"},
+        )
+        assert status == 422, "needs_review is not a priority value"
+        with sqlite3.connect(db_path) as legacy_conn:
+            legacy_conn.execute("UPDATE complaints SET priority = 'needs_review' WHERE id = 'syn-020'")
+        status, legacy_stats = http_request(f"{base_url}/api/stats")
+        assert legacy_stats["by_priority"].get("needs_review") == 1, "Legacy value must stay visible, not be rewritten"
+        status, legacy_detail = http_request(f"{base_url}/api/complaints/syn-020")
+        assert legacy_detail["complaint"]["priority"] == "needs_review"
+        status, legacy_confirmed = http_request(
+            f"{base_url}/api/complaints/syn-020/confirm",
+            "POST",
+            {
+                "topic": legacy_detail["complaint"]["topic"],
+                "service_id": legacy_detail["complaint"]["service_id"],
+                "priority": "normal",
+            },
+        )
+        assert status == 200 and legacy_confirmed["complaint"]["priority"] == "normal"
+        print("PASS 14: unknown urgency is null, urgency is a proposal, needs_review rejected, legacy preserved")
+
+        # 15. Restart persistence: statuses and event trails survive
         stop_server(proc)
         proc, base_url = start_server(repo_root, db_path, find_free_port())
         detail_after = http_request(f"{base_url}/api/complaints/{cid}")[1]
@@ -258,11 +332,11 @@ def run_check():
             "clarification_resolved",
         ]
         stats_after = http_request(f"{base_url}/api/stats")[1]
-        assert stats_after["total_complaints"] == init_stats["total_complaints"] + 2
-        print("PASS 13: Statuses and audit trails persist across a server restart")
+        assert stats_after["total_complaints"] == init_stats["total_complaints"] + 4
+        print("PASS 15: Statuses and audit trails persist across a server restart")
 
         print("\n========================================================")
-        print("ALL 13 CLARIFICATION CHECKS PASSED SUCCESSFULLY!")
+        print("ALL 15 CLARIFICATION CHECKS PASSED SUCCESSFULLY!")
         print("========================================================")
     finally:
         print("[*] Terminating test server process...")

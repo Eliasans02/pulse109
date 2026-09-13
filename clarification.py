@@ -35,6 +35,24 @@ class ClarificationResponse(BaseModel):
     actor: str = "operator_demo"
 
 
+def get_received_clarifications(conn, complaint_id: str) -> list[str]:
+    """Return received clarifications in chronological order; the original text stays untouched."""
+    rows = conn.execute(
+        "SELECT payload FROM audit_events WHERE complaint_id = ? AND event_type = 'clarification_received' "
+        "ORDER BY occurred_at ASC",
+        (complaint_id,),
+    ).fetchall()
+    texts = []
+    for row in rows:
+        try:
+            text = json.loads(row["payload"]).get("text")
+        except (ValueError, AttributeError):
+            text = None
+        if isinstance(text, str) and text:
+            texts.append(text)
+    return texts
+
+
 def build_clarification_router(get_connection: Callable[[], Any], banner_text: str) -> APIRouter:
     router = APIRouter()
 

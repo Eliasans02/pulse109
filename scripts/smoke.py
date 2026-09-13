@@ -134,7 +134,7 @@ def run_smoke():
         proposal = class_res["proposal"]
         assert proposal["topic"] == "water_supply"
         assert proposal["service_id"] == "srv_vodokanal"
-        assert proposal["priority"] in {"normal", "urgent"}
+        assert proposal["priority"] is None, "No urgent signal means unknown urgency (null), not 'normal'"
         print(f"PASS 6: POST /api/complaints/{cid}/classify returned mock proposal: topic='{proposal['topic']}', service='{proposal['service_id']}'")
 
         # Verify proposal did not prematurely confirm complaint

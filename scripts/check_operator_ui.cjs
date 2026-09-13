@@ -332,7 +332,7 @@ async function main() {
       assert.equal(await page.locator('#proposal-content .proposal-pill').count(), 0, 'Stale proposal must not render');
       assert.equal(await page.locator('#confirm-topic').inputValue(), '');
       assert.equal(await page.locator('#confirm-service').inputValue(), '');
-      assert.equal(await page.locator('#confirm-priority').inputValue(), 'normal');
+      assert.equal(await page.locator('#confirm-priority').inputValue(), '', 'Unknown urgency must not become "normal"');
       assert.deepEqual(writes, ['/api/complaints/synthetic-ui-0/classify']);
     });
 
@@ -394,6 +394,7 @@ async function main() {
       await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
       await page.locator('#confirm-topic').selectOption('test_topic');
       await page.locator('#confirm-service').fill('srv-test');
+      await page.locator('#confirm-priority').selectOption('normal');
       state.confirm = {status: 200, delayMs: 800, json: {complaint: confirmedComplaint}};
       await page.locator('#btn-confirm').click();
       await page.waitForTimeout(100);
@@ -405,7 +406,7 @@ async function main() {
       assert.match(await page.locator('#confirm-success').textContent(), /synthetic-ui-0/);
       assert.equal(await page.locator('#confirm-topic').inputValue(), '');
       assert.equal(await page.locator('#confirm-service').inputValue(), '');
-      assert.equal(await page.locator('#confirm-priority').inputValue(), 'normal');
+      assert.equal(await page.locator('#confirm-priority').inputValue(), '', 'Unknown urgency must not become "normal" after reselection');
       assert.deepEqual(writes, ['/api/complaints/synthetic-ui-0/confirm']);
     });
 
@@ -414,6 +415,7 @@ async function main() {
       await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
       await page.locator('#confirm-topic').selectOption('test_topic');
       await page.locator('#confirm-service').fill('srv-test');
+      await page.locator('#confirm-priority').selectOption('normal');
       await page.locator('#btn-confirm').click();
       await page.waitForFunction(() => document.getElementById('active-status-badge').textContent === 'confirmed');
       assert.equal(await page.locator('#active-id').textContent(), 'synthetic-ui-0');
@@ -428,6 +430,7 @@ async function main() {
       await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
       await page.locator('#confirm-topic').selectOption('test_topic');
       await page.locator('#confirm-service').fill('srv-test');
+      await page.locator('#confirm-priority').selectOption('normal');
       state.confirm = {status: 200, json: {}};
       await page.locator('#btn-confirm').click();
       await page.waitForFunction(() => document.getElementById('confirm-error').textContent.includes('некорректный ответ'));
@@ -504,6 +507,7 @@ async function main() {
       await page.waitForFunction(() => document.getElementById('active-id').textContent === 'synthetic-ui-0');
       await page.locator('#confirm-topic').selectOption('test_topic');
       await page.locator('#confirm-service').fill('srv-test');
+      await page.locator('#confirm-priority').selectOption('normal');
       state.confirm = {status: 500, delayMs: 600, json: {detail: 'synthetic_failure'}};
       await page.locator('#btn-confirm').click();
       assert.equal(await page.locator('#btn-confirm').isEnabled(), false, 'Confirm must be disabled while in flight');

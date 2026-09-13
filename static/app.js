@@ -183,10 +183,12 @@ function selectComplaint(c) {
   document.getElementById("confirm-error").style.display = "none";
   document.getElementById("confirm-success").style.display = "none";
 
-  // Pre-fill confirm form
+  // Pre-fill confirm form; unknown urgency (null or legacy values) forces an explicit human choice.
+  const confirmedPriority = ["normal", "urgent"].includes(c.priority) ? c.priority : "";
+  const proposedPriority = ["normal", "urgent"].includes(c.proposed_priority) ? c.proposed_priority : "";
   document.getElementById("confirm-topic").value = c.topic || c.proposed_topic || "";
   document.getElementById("confirm-service").value = c.service_id || c.proposed_service_id || "";
-  document.getElementById("confirm-priority").value = c.priority || c.proposed_priority || "normal";
+  document.getElementById("confirm-priority").value = confirmedPriority || proposedPriority;
 
   // Load proposal / similar if already present
   if (c.proposed_topic) {
@@ -390,6 +392,7 @@ async function handleConfirmSubmit(e) {
 
   if (!topic) { showError(errBox, "Выберите тему"); return; }
   if (!service_id) { showError(errBox, "Укажите ответственную службу"); return; }
+  if (!priority) { showError(errBox, "Выберите приоритет"); return; }
 
   const requestId = ++confirmRequestId;
   btn.disabled = true;
